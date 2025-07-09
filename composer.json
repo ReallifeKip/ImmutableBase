@@ -1,0 +1,25 @@
+{
+  "name": "reallifekip/immutable-base",
+  "description": "適用於 DTO, VO 等不可變物件的基礎抽象類別",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "ReallifeKip\\ImmutableBase\\": "src/"
+    }
+  },
+  "require": {
+    "php": "^8.0"
+  },
+  "authors": [
+    {
+      "name": "ReallifeKip",
+      "email": "bill402099@gmail.com"
+    }
+  ],
+  "keywords": [
+    "dto",
+    "value-object",
+    "immutable"
+  ]
+}
