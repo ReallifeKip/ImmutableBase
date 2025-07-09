@@ -1,6 +1,8 @@
-<?php declare(strict_types=1);
+<?php
 
-namespace DDD\Shared\Domain;
+declare(strict_types=1);
+
+namespace ReallifeKip\ImmutableBase;
 
 use Exception;
 use ReflectionClass;
