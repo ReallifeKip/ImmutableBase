@@ -18,7 +18,7 @@ abstract class ImmutableBase implements JsonSerializable
     private const HIDDEN = [
         'lock',
     ];
-    final public function __construct(array $data = [])
+    public function __construct(array $data = [])
     {
         $this->walkProperties(function (\ReflectionProperty $property) use ($data): void {
             $key = $property->getName();
