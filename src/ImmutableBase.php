@@ -16,13 +16,11 @@ abstract class ImmutableBase implements JsonSerializable
     /** @var ReflectionClass[] $reflectionsCache */
     private static array $reflectionsCache = [];
     private const HIDDEN = [
-        'events',
         'lock',
     ];
-    public function __construct($data)
+    final public function __construct(array $data = [])
     {
-        $this->walkProperties(function ($property) use ($data): void {
-            /** @var \ReflectionProperty $property */
+        $this->walkProperties(function (\ReflectionProperty $property) use ($data): void {
             $key = $property->getName();
             /** @var \ReflectionNamedType|\ReflectionUnionType $type */
             $type = $property->getType();
@@ -50,7 +48,7 @@ abstract class ImmutableBase implements JsonSerializable
         return self::$reflectionsCache[static::class] ??= new ReflectionClass($obj);
     }
     /**
-     * Summary of walkProperties
+     * 歷遍屬性
      * @param callable $callback
      * @return void
      */
@@ -61,6 +59,11 @@ abstract class ImmutableBase implements JsonSerializable
             $callback($property);
         }
     }
+    /**
+     * 更新並返回新的實例
+     * @param array $data
+     * @return ImmutableBase
+     */
     final public function with(array $data): static
     {
         $this->lock = true;
@@ -73,17 +76,27 @@ abstract class ImmutableBase implements JsonSerializable
         $this->lock = false;
         return new static($newData);
     }
+    /**
+     * 返回屬性數組，支援嵌套物件
+     * @return array
+     * @throws Exception
+     */
     final public function toArray(): array
     {
         $properties = [];
-        $this->walkProperties(function ($property) use (&$properties) {
-            /** @var \ReflectionProperty $property */
+        $this->walkProperties(function (\ReflectionProperty $property) use (&$properties) {
             $value = $property->getValue($this);
             $key = $property->getName();
-            if (in_array($key, self::HIDDEN, true) || $this->lock) {
+            if (in_array($key, array_merge(self::HIDDEN, defined(static::class.'::HIDDEN') ? static::HIDDEN : []), true) || $this->lock) {
                 return;
             }
-            $properties[$key] = $value;
+            if ($property->getType()->isBuiltin()) {
+                $properties[$key] = $value;
+            } elseif (is_object($value) && method_exists($value, 'toArray')) {
+                $properties[$key] = $value->toArray();
+            } else {
+                throw new Exception("$key 不是一種 class 或未提供 toArray 方法");
+            }
         });
         return $properties;
     }
@@ -91,7 +104,7 @@ abstract class ImmutableBase implements JsonSerializable
     {
         return $this->toArray();
     }
-    final public function valueDecide(ReflectionNamedType|ReflectionUnionType $type, mixed $value): mixed
+    private function valueDecide(ReflectionNamedType|ReflectionUnionType $type, mixed $value): mixed
     {
         if ($type instanceof ReflectionUnionType) {
             $names = array_map(fn ($e) => $e->getName(), $type->getTypes());
@@ -121,7 +134,7 @@ abstract class ImmutableBase implements JsonSerializable
         }
         return $value;
     }
-    final public function builtinTypeValidate(mixed $value, string $type): bool
+    private function builtinTypeValidate(mixed $value, string $type): bool
     {
         return match ($type) {
             'int', 'integer' => is_int($value),
