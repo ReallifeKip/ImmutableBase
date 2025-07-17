@@ -10,6 +10,10 @@ use JsonSerializable;
 use ReflectionNamedType;
 use ReflectionUnionType;
 
+#[\Attribute(\Attribute::TARGET_PROPERTY)]
+final class Expose
+{
+}
 abstract class ImmutableBase implements JsonSerializable
 {
     protected ?bool $lock = false;
@@ -90,12 +94,14 @@ abstract class ImmutableBase implements JsonSerializable
             if (in_array($key, array_merge(self::HIDDEN, defined(static::class.'::HIDDEN') ? static::HIDDEN : []), true) || $this->lock) {
                 return;
             }
-            if ($property->getType()->isBuiltin()) {
-                $properties[$key] = $value;
-            } elseif (is_object($value) && method_exists($value, 'toArray')) {
-                $properties[$key] = $value->toArray();
-            } elseif ($value) {
-                throw new Exception("$key 不是一種 class 或未提供 toArray 方法");
+            if ($property->getAttributes(Expose::class)) {
+                if ($property->getType()->isBuiltin()) {
+                    $properties[$key] = $value;
+                } elseif (is_object($value) && method_exists($value, 'toArray')) {
+                    $properties[$key] = $value->toArray();
+                } elseif ($value) {
+                    throw new Exception("$key 不是一種 class 或未提供 toArray 方法");
+                }
             }
         });
         return $properties;
