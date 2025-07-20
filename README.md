@@ -12,9 +12,10 @@
 - ✅ **支援 `readonly` 行為邏輯（非語法）**
 - ✅ **支援 `ReflectionUnionType` 型別解析**
 - ✅ **遞迴初始化巢狀 ImmutableBase 子類**
-- ✅ **支援 `with([...])` 複製模式**
+- ✅ **支援 `with([...])` 複製模式，包含嵌套物件更新**
 - ✅ **自動 `toArray()` 與 `jsonSerialize()`**
-- ✅ **隱藏內部欄位（如 lock, events）避免序列化污染**
+- ✅ **屬性標註系統：`#[Expose]`、`#[Reason]`、`#[Relaxed]`**
+- ✅ **屬性訪問控制與設計原因強制說明**
 
 ---
 
@@ -23,12 +24,19 @@
 ### 1. 建立你的不可變物件類別
 
 ```php
-use DDD\Shared\Domain\ImmutableBase;
+use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Expose;
 
 final class UserDTO extends ImmutableBase
 {
-    public string $name;
-    public int $age;
+    #[Expose]
+    private string $name;
+
+    #[Expose]
+    private int $age;
+
+    #[Expose]
+    private ?ProfileDTO $profile = null;
 }
 ```
 
@@ -44,7 +52,18 @@ $user = new UserDTO([
 ### 3. 使用 `with()` 建立修改版
 
 ```php
+// 簡單屬性更新
 $olderUser = $user->with(['age' => 31]);
+
+// 嵌套物件部分更新（v2.0.0 新功能）
+$userWithNewAddress = $user->with([
+    'profile' => [
+        'address' => [
+            'city' => '台北市',
+            'zipCode' => '10001'
+        ]
+    ]
+]);
 ```
 
 ### 4. 輸出為陣列或 JSON
@@ -52,6 +71,53 @@ $olderUser = $user->with(['age' => 31]);
 ```php
 $user->toArray();         // ['name' => 'Alice', 'age' => 30]
 json_encode($user);       // '{"name":"Alice","age":30}'
+```
+
+---
+
+## 屬性標註系統
+
+### `#[Expose]` - 輸出控制
+
+標記可被 `toArray()` 和 `jsonSerialize()` 輸出的屬性：
+
+```php
+class UserDTO extends ImmutableBase
+{
+    #[Expose]
+    private string $name;        // 會被輸出
+
+    private string $password;    // 不會被輸出
+}
+```
+
+### `#[Reason]` - 設計原因說明
+
+當屬性不是 `private` 時，必須使用此標註說明設計原因：
+
+```php
+class UserDTO extends ImmutableBase
+{
+    #[Expose]
+    #[Reason('需要被子類別存取')]
+    protected string $id;
+
+    #[Expose]
+    public readonly string $email;  // readonly 屬性可以是 public
+}
+```
+
+### `#[Relaxed]` - 鬆散模式
+
+標記在 class 上，允許不強制要求 `#[Reason]` 標註：
+
+```php
+#[Relaxed]
+class SimpleVO extends ImmutableBase
+{
+    #[Expose]
+    protected string $value;  // 在鬆散模式下不需要 #[Reason]
+}
 ```
 
 ---
@@ -83,7 +149,8 @@ public int|string $value;
 若某屬性為另一個 ImmutableBase 子類：
 
 ```php
-public AddressDTO $address;
+#[Expose]
+private AddressDTO $address;
 ```
 
 則若 `$data['address']` 為 array，會自動遞迴初始化：
@@ -92,27 +159,116 @@ public AddressDTO $address;
 new AddressDTO([...])
 ```
 
+**v2.0.0 新功能**：`with()` 方法現在支援嵌套更新：
+
+```php
+$user = $user->with([
+    'address' => [
+        'city' => '新城市'  // 只更新地址的城市，其他屬性保持不變
+    ]
+]);
+```
+
 ---
 
 ### 不可變與 `with()` 設計
 
-- `with(array $data)`：建立 **修改後的新實體**，不影響原始物件。
-- 內部以 `$this->lock` 控制是否允許讀寫屬性，避免意外覆蓋。
+- `with(array $data)`：建立 **修改後的新實體**，不影響原始物件
+- 支援嵌套物件的部分更新，會遞迴調用嵌套物件的 `with()` 方法
+- 使用 Reflection 直接處理屬性，確保型別安全
 
 ---
 
 ### 自動 `toArray()` 與 `jsonSerialize()`
 
-- 透過 Reflection 自動導出所有屬性（排除 `HIDDEN` 名單）
+- 透過 Reflection 自動導出所有標記 `#[Expose]` 的屬性
+- 支援嵌套 ImmutableBase 物件的遞迴序列化
 - `json_encode()` 等同於 `toArray()` 的輸出
 
 ---
 
 ## 注意事項
 
-1. **型別宣告為必要**：未宣告型別會導致 Reflection 錯誤。
-2. **不支援可變屬性**：務必遵守 Immutable 設計原則。
-3. **不支援 constructor injection**：請以 `$data` array 傳入。
+1. **型別宣告為必要**：未宣告型別會導致 Reflection 錯誤
+2. **不支援可變屬性**：務必遵守 Immutable 設計原則
+3. **不支援 constructor injection**：請以 `$data` array 傳入
+4. **屬性標註規則**：
+   - 使用 `#[Expose]` 標記需要輸出的屬性
+   - 非 private 屬性需要 `#[Reason]` 說明或使用 `#[Relaxed]` 模式
+   - 禁止非 readonly 的 public 屬性
+
+---
+
+## 完整範例
+
+```php
+<?php
+
+use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Expose;
+use ReallifeKip\ImmutableBase\Reason;
+
+class AddressDTO extends ImmutableBase
+{
+    #[Expose]
+    private string $city;
+
+    #[Expose]
+    private string $zipCode;
+}
+
+class ProfileDTO extends ImmutableBase
+{
+    #[Expose]
+    private AddressDTO $address;
+
+    #[Expose]
+    private ?string $phone = null;
+}
+
+class UserDTO extends ImmutableBase
+{
+    #[Expose]
+    private string $name;
+
+    #[Expose]
+    private int $age;
+
+    #[Expose]
+    private ?ProfileDTO $profile = null;
+
+    #[Expose]
+    #[Reason('需要被子類別訪問以實作特殊邏輯')]
+    protected string $id;
+}
+
+// 初始化
+$user = new UserDTO([
+    'id' => 'user_123',
+    'name' => 'Alice',
+    'age' => 30,
+    'profile' => [
+        'address' => [
+            'city' => '台北市',
+            'zipCode' => '10001'
+        ],
+        'phone' => '0912-345-678'
+    ]
+]);
+
+// 嵌套更新
+$relocatedUser = $user->with([
+    'profile' => [
+        'address' => [
+            'city' => '高雄市',
+            'zipCode' => '80001'
+        ]
+    ]
+]);
+
+// 輸出
+echo json_encode($relocatedUser, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+```
 
 ---
 
