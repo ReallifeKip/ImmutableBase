@@ -10,18 +10,51 @@ use JsonSerializable;
 use ReflectionNamedType;
 use ReflectionUnionType;
 
+/**
+ * 鬆散模式
+ *
+ * 此模式下的 class 不強制要求填寫 Reason
+ */
+#[\Attribute(\Attribute::TARGET_CLASS)]
+final class Relaxed
+{
+}
+/**
+ * 暴露
+ *
+ * 用以標記為可被 toArray() 輸出的屬性
+*/
 #[\Attribute(\Attribute::TARGET_PROPERTY)]
 final class Expose
 {
 }
+
+/**
+ * 設計原因
+ *
+ * 屬性非 private 時強制使用此標註
+ *
+ * 用以說明屬性設為 protected 原因
+ * @param string $why 設計原因
+ * @throws Exception 當設計原因為空時拋出異常
+*/
+#[\Attribute(\Attribute::TARGET_PROPERTY)]
+final class Reason
+{
+    public bool $error = false;
+    public function __construct(
+        public string $why = '',
+    ) {
+        if (trim($why) === '') {
+            $this->error = true;
+        }
+    }
+}
+
 abstract class ImmutableBase implements JsonSerializable
 {
-    protected ?bool $lock = false;
     /** @var ReflectionClass[] $reflectionsCache */
     private static array $reflectionsCache = [];
-    private const HIDDEN = [
-        'lock',
-    ];
     public function __construct(array $data = [])
     {
         $this->walkProperties(function (\ReflectionProperty $property) use ($data): void {
@@ -58,7 +91,20 @@ abstract class ImmutableBase implements JsonSerializable
      */
     private function walkProperties(callable $callback): void
     {
-        foreach (self::getReflection($this)->getProperties() as $property) {
+        $ref = self::getReflection($this);
+        $relaxed = $this->isRelaxed($ref);
+        foreach ($ref->getProperties() as $property) {
+            $reason = $property->getAttributes(Reason::class);
+            if ($property->isPublic() && !$property->isReadOnly()) {
+                throw new Exception("{$property->getName()}：不允許 public 屬性非 readonly");
+            }
+            if (!$relaxed && !$property->isPrivate()) {
+                if (empty($reason)) {
+                    throw new Exception("{$property->getName()}：非 private，需透過 #[Reason('原因')] 說明設計原因，或將 class 標記為 #[Relaxed]");
+                } elseif ($reason[0]->newInstance()->error) {
+                    throw new Exception("{$property->getName()}：public readonly 或 protected 設計原因不得為空");
+                }
+            }
             $property->setAccessible(true);
             $callback($property);
         }
@@ -70,14 +116,18 @@ abstract class ImmutableBase implements JsonSerializable
      */
     final public function with(array $data): static
     {
-        $this->lock = true;
-        $newData = $this->toArray();
-        foreach ($data as $key => $value) {
-            if (array_key_exists($key, $newData)) {
-                $newData[$key] = $value;
+        $newData = [];
+        $ref = self::getReflection($this);
+        foreach ($ref->getProperties() as $property) {
+            $name = $property->getName();
+            $type = $property->getType();
+            $value = $property->getValue($this);
+            if (isset($data[$name])) {
+                $newData[$name] = $type->isBuiltin() ? $this->valueDecide($type, $data[$name]) : $value->with($data[$name]);
+            } else {
+                $newData[$name] = $property->getValue($this);
             }
         }
-        $this->lock = false;
         return new static($newData);
     }
     /**
@@ -91,9 +141,6 @@ abstract class ImmutableBase implements JsonSerializable
         $this->walkProperties(function (\ReflectionProperty $property) use (&$properties) {
             $value = $property->getValue($this);
             $key = $property->getName();
-            if (in_array($key, array_merge(self::HIDDEN, defined(static::class.'::HIDDEN') ? static::HIDDEN : []), true) || $this->lock) {
-                return;
-            }
             if ($property->getAttributes(Expose::class)) {
                 if ($property->getType()->isBuiltin()) {
                     $properties[$key] = $value;
@@ -152,5 +199,15 @@ abstract class ImmutableBase implements JsonSerializable
             'null' => is_null($value),
             default => false,
         };
+    }
+    private function isRelaxed(ReflectionClass $class): bool
+    {
+        while ($class) {
+            if (!empty($class->getAttributes(Relaxed::class))) {
+                return true;
+            }
+            $class = $class->getParentClass();
+        }
+        return false;
     }
 }
