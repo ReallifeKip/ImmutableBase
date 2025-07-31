@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## [v2.2.0] - 2025-07-31
+
+### 🎉 新功能
+- **新增 `#[ArrayOf]` 標註**：
+  - 支援陣列屬性的自動實例化
+  - 可指定陣列元素的類別類型
+  - 自動將陣列數據轉換為指定類別的實例
+  - 提供錯誤驗證，確保類別名稱不為空
+
+### 📝 更新
+- **調整廢棄時程**：
+  - `#[Relaxed]` - 廢棄時程延後至 v2.3.0
+  - `#[Expose]` - 廢棄時程延後至 v2.3.0
+
+### 📚 範例
+```php
+#[DataTransferObject]
+class UserListDTO extends ImmutableBase
+{
+    #[ArrayOf(UserDTO::class)]
+    public readonly array $users;
+}
+
+// 使用方式
+$userList = new UserListDTO([
+    'users' => [
+        ['name' => 'Alice', 'age' => 30],
+        ['name' => 'Bob', 'age' => 25]
+    ]
+]);
+// 自動將每個陣列元素轉換為 UserDTO 實例
+```
+
+---
+
 ## [v2.1.0] - 2025-08-01
 
 ### 🎉 新功能
@@ -18,8 +53,8 @@
   - 改進型別驗證錯誤訊息
 
 ### 🗑️ 即將棄用標註
-- `#[Relaxed]` - 標記為 @deprecated v2.2.0
-- `#[Expose]` - 標記為 @deprecated v2.2.0
+- `#[Relaxed]` - 標記為 @deprecated v2.3.0
+- `#[Expose]` - 標記為 @deprecated v2.3.0
 
 ### 📚 範例
 ```php

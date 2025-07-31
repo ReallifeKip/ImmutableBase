@@ -36,6 +36,7 @@ final class Expose
  *
  * 所有屬性必須為 public readonly
  */
+#[\Attribute(\Attribute::TARGET_CLASS)]
 final class DataTransferObject
 {
 }
@@ -45,6 +46,7 @@ final class DataTransferObject
  *
  * 所有屬性必須為 private
  */
+#[\Attribute(\Attribute::TARGET_CLASS)]
 final class ValueObject
 {
 }
@@ -54,8 +56,22 @@ final class ValueObject
  *
  * 所有屬性必須為 private
  */
+#[\Attribute(\Attribute::TARGET_CLASS)]
 final class Entity
 {
+}
+
+#[\Attribute(\Attribute::TARGET_PROPERTY)]
+final class ArrayOf
+{
+    public bool $error = false;
+    public function __construct(
+        public string $class = '',
+    ) {
+        if (trim($this->class) === '') {
+            $this->error = true;
+        }
+    }
 }
 
 /**
@@ -94,8 +110,17 @@ abstract class ImmutableBase implements JsonSerializable
                 $exists = array_key_exists($key, $data);
                 $nullable = $type->allowsNull();
                 $hasDefault = $property->hasDefaultValue();
+                $arrayOf = $property->getAttributes(ArrayOf::class);
+                $class = null;
+                if ($arrayOf) {
+                    if ($arrayOf[0]->newInstance()->error) {
+                        throw new Exception("ArrayOf class 不能為空");
+                    }
+                    $class = $arrayOf[0]->getArguments()[0];
+                }
                 $value = match(true) {
                     !$exists && !$nullable => throw new Exception("$key 必須傳入 $type"),
+                    $arrayOf && $class => array_map(fn ($item) => new $class($item), $data[$key]),
                     !$exists && $nullable && !$hasDefault => null,
                     !$exists && $nullable && $hasDefault => $property->getDefaultValue(),
                     $exists => $this->valueDecide($type, $data[$key]),
@@ -142,7 +167,7 @@ abstract class ImmutableBase implements JsonSerializable
     /**
      * 更新並返回新的實例
      * @param array $data
-     * @return ImmutableBase
+     * @return static
      */
     final public function with(array $data): static
     {

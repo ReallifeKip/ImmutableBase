@@ -15,6 +15,7 @@
 - ✅ **支援 `with([...])` 複製模式，包含嵌套物件更新**
 - ✅ **自動 `toArray()` 與 `jsonSerialize()`**
 - ✅ **架構模式標註：`#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`**
+- ✅ **陣列自動實例化：`#[ArrayOf]`**
 - ✅ **屬性標註系統：`#[Expose]`、`#[Reason]`、`#[Relaxed]`**
 - ✅ **屬性訪問控制與設計原因強制說明**
 
@@ -147,7 +148,48 @@ class User extends ImmutableBase
 
 > ⚠️ **注意**：以下標註即將於 v2.2.0 棄用，建議使用架構模式標註。
 
-### `#[Expose]` - 輸出控制 (@deprecated v2.2.0)
+````
+
+### `#[ArrayOf]` - 陣列自動實例化
+
+指定陣列屬性中每個元素的類別，自動將陣列數據轉換為指定類別的實例：
+
+```php
+use ReallifeKip\ImmutableBase\ArrayOf;
+use ReallifeKip\ImmutableBase\DataTransferObject;
+
+#[DataTransferObject]
+class UserListDTO extends ImmutableBase
+{
+    #[ArrayOf(UserDTO::class)]
+    public readonly array $users;
+
+    #[ArrayOf(TagDTO::class)]
+    public readonly array $tags;
+}
+
+// 使用方式
+$userList = new UserListDTO([
+    'users' => [
+        ['name' => 'Alice', 'age' => 30],
+        ['name' => 'Bob', 'age' => 25]
+    ],
+    'tags' => [
+        ['name' => 'developer'],
+        ['name' => 'senior']
+    ]
+]);
+
+// users 和 tags 陣列中的每個元素都會自動轉換為對應的 DTO 實例
+````
+
+---
+
+## 屬性標註系統（將於 v2.3.0 棄用）
+
+> ⚠️ **注意**：以下標註將在 v2.3.0 標記為 deprecated，建議使用架構模式標註。
+
+### `#[Expose]` - 輸出控制 (將於 v2.3.0 棄用)
 
 標記可被 `toArray()` 和 `jsonSerialize()` 輸出的屬性：
 
@@ -161,7 +203,7 @@ class UserDTO extends ImmutableBase
 }
 ```
 
-### `#[Reason]` - 設計原因說明 (@deprecated v2.2.0)
+### `#[Reason]` - 設計原因說明 (將於 v2.3.0 棄用)
 
 當屬性不是 `private` 時，必須使用此標註說明設計原因：
 
@@ -177,7 +219,7 @@ class UserDTO extends ImmutableBase
 }
 ```
 
-### `#[Relaxed]` - 鬆散模式 (@deprecated v2.2.0)
+### `#[Relaxed]` - 鬆散模式 (將於 v2.3.0 棄用)
 
 標記在 class 上，允許不強制要求 `#[Reason]` 標註：
 
@@ -264,7 +306,8 @@ $user = $user->with([
 3. **不支援 constructor injection**：請以 `$data` array 傳入
 4. **屬性標註規則**：
    - **推薦**：使用架構模式標註 `#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`
-   - **已棄用**：`#[Expose]`、`#[Reason]`、`#[Relaxed]` 標註（v2.2.0 將移除）
+   - **陣列處理**：使用 `#[ArrayOf(ClassName::class)]` 進行陣列自動實例化
+   - **將棄用**：`#[Expose]`、`#[Reason]`、`#[Relaxed]` 標註（v2.3.0 將棄用）
    - DataTransferObject 要求所有屬性為 `public readonly`
    - ValueObject 和 Entity 要求所有屬性為 `private`
 
@@ -278,6 +321,7 @@ $user = $user->with([
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\DataTransferObject;
 use ReallifeKip\ImmutableBase\ValueObject;
+use ReallifeKip\ImmutableBase\ArrayOf;
 
 #[DataTransferObject]
 class AddressDTO extends ImmutableBase
@@ -287,10 +331,20 @@ class AddressDTO extends ImmutableBase
 }
 
 #[DataTransferObject]
+class TagDTO extends ImmutableBase
+{
+    public readonly string $name;
+    public readonly ?string $color = null;
+}
+
+#[DataTransferObject]
 class ProfileDTO extends ImmutableBase
 {
     public readonly AddressDTO $address;
     public readonly ?string $phone = null;
+
+    #[ArrayOf(TagDTO::class)]
+    public readonly array $tags;
 }
 
 #[ValueObject]
@@ -323,7 +377,11 @@ $user = new UserDTO([
             'city' => '台北市',
             'zipCode' => '10001'
         ],
-        'phone' => '0912-345-678'
+        'phone' => '0912-345-678',
+        'tags' => [
+            ['name' => 'developer', 'color' => 'blue'],
+            ['name' => 'senior', 'color' => 'gold']
+        ]
     ]
 ]);
 
