@@ -14,6 +14,7 @@
 - ✅ **遞迴初始化巢狀 ImmutableBase 子類**
 - ✅ **支援 `with([...])` 複製模式，包含嵌套物件更新**
 - ✅ **自動 `toArray()` 與 `jsonSerialize()`**
+- ✅ **架構模式標註：`#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`**
 - ✅ **屬性標註系統：`#[Expose]`、`#[Reason]`、`#[Relaxed]`**
 - ✅ **屬性訪問控制與設計原因強制說明**
 
@@ -25,18 +26,14 @@
 
 ```php
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\Expose;
+use ReallifeKip\ImmutableBase\DataTransferObject;
 
+#[DataTransferObject]
 final class UserDTO extends ImmutableBase
 {
-    #[Expose]
-    private string $name;
-
-    #[Expose]
-    private int $age;
-
-    #[Expose]
-    private ?ProfileDTO $profile = null;
+    public readonly string $name;
+    public readonly int $age;
+    public readonly ?ProfileDTO $profile = null;
 }
 ```
 
@@ -75,9 +72,82 @@ json_encode($user);       // '{"name":"Alice","age":30}'
 
 ---
 
-## 屬性標註系統
+## 架構模式標註
 
-### `#[Expose]` - 輸出控制
+### `#[DataTransferObject]` - 資料傳輸物件
+
+所有屬性必須為 `public readonly`，適用於跨層傳輸資料：
+
+```php
+use ReallifeKip\ImmutableBase\DataTransferObject;
+
+#[DataTransferObject]
+class UserDTO extends ImmutableBase
+{
+    public readonly string $name;
+    public readonly int $age;
+    public readonly string $email;
+}
+```
+
+### `#[ValueObject]` - 值物件
+
+所有屬性必須為 `private`，適用於領域驅動設計中的值物件：
+
+```php
+use ReallifeKip\ImmutableBase\ValueObject;
+
+#[ValueObject]
+class Money extends ImmutableBase
+{
+    private int $amount;
+    private string $currency;
+
+    public function getAmount(): int
+    {
+        return $this->amount;
+    }
+
+    public function getCurrency(): string
+    {
+        return $this->currency;
+    }
+}
+```
+
+### `#[Entity]` - 實體物件
+
+所有屬性必須為 `private`，適用於領域驅動設計中的實體：
+
+```php
+use ReallifeKip\ImmutableBase\Entity;
+
+#[Entity]
+class User extends ImmutableBase
+{
+    private string $id;
+    private string $email;
+    private string $name;
+
+    public function getId(): string
+    {
+        return $this->id;
+    }
+
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
+}
+```
+
+---
+
+## 屬性標註系統（即將棄用）
+
+> ⚠️ **注意**：以下標註即將於 v2.2.0 棄用，建議使用架構模式標註。
+
+### `#[Expose]` - 輸出控制 (@deprecated v2.2.0)
 
 標記可被 `toArray()` 和 `jsonSerialize()` 輸出的屬性：
 
@@ -91,7 +161,7 @@ class UserDTO extends ImmutableBase
 }
 ```
 
-### `#[Reason]` - 設計原因說明
+### `#[Reason]` - 設計原因說明 (@deprecated v2.2.0)
 
 當屬性不是 `private` 時，必須使用此標註說明設計原因：
 
@@ -107,7 +177,7 @@ class UserDTO extends ImmutableBase
 }
 ```
 
-### `#[Relaxed]` - 鬆散模式
+### `#[Relaxed]` - 鬆散模式 (@deprecated v2.2.0)
 
 標記在 class 上，允許不強制要求 `#[Reason]` 標註：
 
@@ -193,9 +263,10 @@ $user = $user->with([
 2. **不支援可變屬性**：務必遵守 Immutable 設計原則
 3. **不支援 constructor injection**：請以 `$data` array 傳入
 4. **屬性標註規則**：
-   - 使用 `#[Expose]` 標記需要輸出的屬性
-   - 非 private 屬性需要 `#[Reason]` 說明或使用 `#[Relaxed]` 模式
-   - 禁止非 readonly 的 public 屬性
+   - **推薦**：使用架構模式標註 `#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`
+   - **已棄用**：`#[Expose]`、`#[Reason]`、`#[Relaxed]` 標註（v2.2.0 將移除）
+   - DataTransferObject 要求所有屬性為 `public readonly`
+   - ValueObject 和 Entity 要求所有屬性為 `private`
 
 ---
 
@@ -205,46 +276,46 @@ $user = $user->with([
 <?php
 
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\Expose;
-use ReallifeKip\ImmutableBase\Reason;
+use ReallifeKip\ImmutableBase\DataTransferObject;
+use ReallifeKip\ImmutableBase\ValueObject;
 
+#[DataTransferObject]
 class AddressDTO extends ImmutableBase
 {
-    #[Expose]
-    private string $city;
-
-    #[Expose]
-    private string $zipCode;
+    public readonly string $city;
+    public readonly string $zipCode;
 }
 
+#[DataTransferObject]
 class ProfileDTO extends ImmutableBase
 {
-    #[Expose]
-    private AddressDTO $address;
-
-    #[Expose]
-    private ?string $phone = null;
+    public readonly AddressDTO $address;
+    public readonly ?string $phone = null;
 }
 
+#[ValueObject]
+class UserId extends ImmutableBase
+{
+    private string $value;
+
+    public function getValue(): string
+    {
+        return $this->value;
+    }
+}
+
+#[DataTransferObject]
 class UserDTO extends ImmutableBase
 {
-    #[Expose]
-    private string $name;
-
-    #[Expose]
-    private int $age;
-
-    #[Expose]
-    private ?ProfileDTO $profile = null;
-
-    #[Expose]
-    #[Reason('需要被子類別訪問以實作特殊邏輯')]
-    protected string $id;
+    public readonly string $name;
+    public readonly int $age;
+    public readonly ?ProfileDTO $profile = null;
+    public readonly UserId $id;
 }
 
 // 初始化
 $user = new UserDTO([
-    'id' => 'user_123',
+    'id' => ['value' => 'user_123'],
     'name' => 'Alice',
     'age' => 30,
     'profile' => [
