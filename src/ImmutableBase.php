@@ -11,27 +11,6 @@ use ReflectionNamedType;
 use ReflectionUnionType;
 
 /**
- * 鬆散模式
- *
- * 此模式下的 class 不強制要求填寫 Reason
- * @deprecated v2.2.0
- */
-#[\Attribute(\Attribute::TARGET_CLASS)]
-final class Relaxed
-{
-}
-/**
- * 暴露
- *
- * 用以標記為可被 toArray() 輸出的屬性
- * @deprecated v2.2.0
-*/
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
-final class Expose
-{
-}
-
-/**
  * Data Transfer Object
  *
  * 所有屬性必須為 public readonly
@@ -74,28 +53,6 @@ final class ArrayOf
     }
 }
 
-/**
- * 設計原因
- *
- * 屬性非 private 時強制使用此標註
- *
- * 用以說明屬性設為 protected 原因
- * @param string $why 設計原因
- * @throws Exception 當設計原因為空時拋出異常
-*/
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
-final class Reason
-{
-    public bool $error = false;
-    public function __construct(
-        public string $why = '',
-    ) {
-        if (trim($why) === '') {
-            $this->error = true;
-        }
-    }
-}
-
 abstract class ImmutableBase implements JsonSerializable
 {
     /** @var ReflectionClass[] $reflectionsCache */
@@ -114,13 +71,24 @@ abstract class ImmutableBase implements JsonSerializable
                 $class = null;
                 if ($arrayOf) {
                     if ($arrayOf[0]->newInstance()->error) {
-                        throw new Exception("ArrayOf class 不能為空");
+                        throw new Exception('ArrayOf class 不能為空');
                     }
                     $class = $arrayOf[0]->getArguments()[0];
+                    if (!is_subclass_of($class, self::class)) {
+                        throw new Exception('ArrayOf 指定的 class 必須為 ImmutableBase 的子類');
+                    }
                 }
                 $value = match(true) {
-                    !$exists && !$nullable => throw new Exception("$key 必須傳入 $type"),
-                    $arrayOf && $class => array_map(fn ($item) => new $class($item), $data[$key]),
+                    !$exists && !$nullable => throw new Exception("必須傳入 $type"),
+                    $arrayOf && $class => array_map(function ($item) use ($class) {
+                        if (is_array($item)) {
+                            return new $class($item);
+                        } elseif ($item instanceof $class) {
+                            return $item;
+                        } else {
+                            throw new Exception("必須傳入 array 或 $class 實例");
+                        }
+                    }, $data[$key]),
                     !$exists && $nullable && !$hasDefault => null,
                     !$exists && $nullable && $hasDefault => $property->getDefaultValue(),
                     $exists => $this->valueDecide($type, $data[$key]),
@@ -149,15 +117,17 @@ abstract class ImmutableBase implements JsonSerializable
         $dataTransferObject = $ref->getAttributes(DataTransferObject::class);
         $valueObject = $ref->getAttributes(ValueObject::class);
         $entity = $ref->getAttributes(Entity::class);
+        if (!$dataTransferObject && !$valueObject && !$entity) {
+            throw new Exception('ImmutableBase 子類必須使用 DataTransferObject、ValueObject 或 Entity 任一標註');
+        }
         foreach ($ref->getProperties() as $property) {
-            $name = $property->getName();
             if ($entity || $valueObject) {
-                if (!$property->isPrivate()) {
-                    throw new Exception("{$name}：必須為 private");
+                if ($property->isPublic()) {
+                    throw new Exception('不允許為 public');
                 }
             } elseif ($dataTransferObject) {
                 if (!$property->isPublic() || !$property->isReadOnly()) {
-                    throw new Exception("{$name}：必須為 public 且 readonly");
+                    throw new Exception('必須為 public 且 readonly');
                 }
             }
             $property->setAccessible(true);
@@ -200,12 +170,22 @@ abstract class ImmutableBase implements JsonSerializable
         $this->walkProperties(function (\ReflectionProperty $property) use (&$properties) {
             $value = $property->getValue($this);
             $key = $property->getName();
-            if ($property->getType()->isBuiltin()) {
-                $properties[$key] = $value;
-            } elseif (is_object($value) && method_exists($value, 'toArray')) {
-                $properties[$key] = $value->toArray();
-            } elseif ($value) {
-                throw new Exception("$key 不是一種 class 或未提供 toArray 方法");
+            if (is_array($value)) {
+                foreach ($value as $v) {
+                    if (is_object($v) && method_exists($v, 'toArray')) {
+                        $properties[$key][] = $v->toArray();
+                    } else {
+                        $properties[$key][] = $v;
+                    }
+                }
+            } else {
+                if ($property->getType()->isBuiltin()) {
+                    $properties[$key] = $value;
+                } elseif (is_object($value) && method_exists($value, 'toArray')) {
+                    $properties[$key] = $value->toArray();
+                } elseif ($value) {
+                    throw new Exception('不是一種 class 或未提供 toArray 方法');
+                }
             }
         });
         return $properties;
@@ -219,7 +199,7 @@ abstract class ImmutableBase implements JsonSerializable
         if ($type instanceof ReflectionUnionType) {
             $names = array_map(fn ($e) => $e->getName(), $type->getTypes());
             if (!in_array('array', $names, true) && is_array($value)) {
-                throw new Exception("型別為複合且不包含array，須傳入已實例化的物件。");
+                throw new Exception('型別為複合且不包含array，須傳入已實例化的物件。');
             }
             foreach ($type->getTypes() as $t) {
                 return $this->valueDecide($t, $value);

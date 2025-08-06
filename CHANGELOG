@@ -1,6 +1,51 @@
 # CHANGELOG
 
-## [v2.2.0] - 2025-07-31
+## [v2.3.0] - 2025-08-07
+
+### 🎉 新功能
+- **強化 `#[ArrayOf]` 標註驗證**：
+  - 新增類型檢查，確保指定的類別是 ImmutableBase 的子類
+  - 支援傳入已實例化的物件或陣列資料
+  - 優化錯誤訊息提供更清楚的指引
+
+### ✨ 功能改進
+- **增強 `toArray()` 方法**：
+  - 優化陣列處理邏輯，支援物件陣列的遞迴序列化
+  - 自動處理 ArrayOf 標註的物件陣列輸出
+- **強制架構模式標註**：
+  - 所有 ImmutableBase 子類必須使用 `#[DataTransferObject]`、`#[ValueObject]` 或 `#[Entity]` 其中之一
+  - 更嚴格的屬性可見性檢查
+
+### 🗑️ 正式移除
+- **移除已棄用標註**：
+  - `#[Relaxed]` - 已完全移除
+  - `#[Expose]` - 已完全移除
+  - `#[Reason]` - 已完全移除
+
+### 🔧 重大變更
+- **Breaking Change**: 所有子類現在必須使用架構模式標註
+- **Breaking Change**: ValueObject 和 Entity 新增支援 protected 屬性
+- **Breaking Change**: 移除所有舊版標註
+
+### 📚 範例
+```php
+#[DataTransferObject]
+class OrderDTO extends ImmutableBase
+{
+    #[ArrayOf(OrderItemDTO::class)]
+    public readonly array $items;
+}
+
+// 支援混合輸入
+$order = new OrderDTO([
+    'items' => [
+        ['name' => 'Product A', 'price' => 100],  // 陣列會自動轉換
+        new OrderItemDTO(['name' => 'Product B', 'price' => 200])  // 已實例化也可接受
+    ]
+]);
+```
+
+## [v2.2.0] - 2025-08-01
 
 ### 🎉 新功能
 - **新增 `#[ArrayOf]` 標註**：

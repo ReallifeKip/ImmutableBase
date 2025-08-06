@@ -14,10 +14,9 @@
 - ✅ **遞迴初始化巢狀 ImmutableBase 子類**
 - ✅ **支援 `with([...])` 複製模式，包含嵌套物件更新**
 - ✅ **自動 `toArray()` 與 `jsonSerialize()`**
-- ✅ **架構模式標註：`#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`**
-- ✅ **陣列自動實例化：`#[ArrayOf]`**
-- ✅ **屬性標註系統：`#[Expose]`、`#[Reason]`、`#[Relaxed]`**
-- ✅ **屬性訪問控制與設計原因強制說明**
+- ✅ **架構模式標註：`#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]` (必須)**
+- ✅ **陣列自動實例化：`#[ArrayOf]` 含類型驗證**
+- ✅ **強制屬性訪問控制與型別安全**
 
 ---
 
@@ -73,7 +72,9 @@ json_encode($user);       // '{"name":"Alice","age":30}'
 
 ---
 
-## 架構模式標註
+## 架構模式標註（必須使用）
+
+> ⚠️ **重要**：v2.3.0 開始，所有 ImmutableBase 子類都**必須**使用以下其中一個標註。
 
 ### `#[DataTransferObject]` - 資料傳輸物件
 
@@ -152,7 +153,8 @@ class User extends ImmutableBase
 
 ### `#[ArrayOf]` - 陣列自動實例化
 
-指定陣列屬性中每個元素的類別，自動將陣列數據轉換為指定類別的實例：
+指定陣列屬性中每個元素的類別，自動將陣列數據轉換為指定類別的實例。
+v2.3.0 新增嚴格類型驗證：
 
 ```php
 use ReallifeKip\ImmutableBase\ArrayOf;
@@ -161,7 +163,7 @@ use ReallifeKip\ImmutableBase\DataTransferObject;
 #[DataTransferObject]
 class UserListDTO extends ImmutableBase
 {
-    #[ArrayOf(UserDTO::class)]
+    #[ArrayOf(UserDTO::class)]  // 必須是 ImmutableBase 子類
     public readonly array $users;
 
     #[ArrayOf(TagDTO::class)]
@@ -182,55 +184,6 @@ $userList = new UserListDTO([
 
 // users 和 tags 陣列中的每個元素都會自動轉換為對應的 DTO 實例
 ````
-
----
-
-## 屬性標註系統（將於 v2.3.0 棄用）
-
-> ⚠️ **注意**：以下標註將在 v2.3.0 標記為 deprecated，建議使用架構模式標註。
-
-### `#[Expose]` - 輸出控制 (將於 v2.3.0 棄用)
-
-標記可被 `toArray()` 和 `jsonSerialize()` 輸出的屬性：
-
-```php
-class UserDTO extends ImmutableBase
-{
-    #[Expose]
-    private string $name;        // 會被輸出
-
-    private string $password;    // 不會被輸出
-}
-```
-
-### `#[Reason]` - 設計原因說明 (將於 v2.3.0 棄用)
-
-當屬性不是 `private` 時，必須使用此標註說明設計原因：
-
-```php
-class UserDTO extends ImmutableBase
-{
-    #[Expose]
-    #[Reason('需要被子類別存取')]
-    protected string $id;
-
-    #[Expose]
-    public readonly string $email;  // readonly 屬性可以是 public
-}
-```
-
-### `#[Relaxed]` - 鬆散模式 (將於 v2.3.0 棄用)
-
-標記在 class 上，允許不強制要求 `#[Reason]` 標註：
-
-```php
-#[Relaxed]
-class SimpleVO extends ImmutableBase
-{
-    #[Expose]
-    protected string $value;  // 在鬆散模式下不需要 #[Reason]
-}
-```
 
 ---
 
@@ -261,7 +214,10 @@ public int|string $value;
 若某屬性為另一個 ImmutableBase 子類：
 
 ```php
-#[Expose]
+// DataTransferObject 模式
+public readonly AddressDTO $address;
+
+// 或 ValueObject/Entity 模式
 private AddressDTO $address;
 ```
 
@@ -293,7 +249,6 @@ $user = $user->with([
 
 ### 自動 `toArray()` 與 `jsonSerialize()`
 
-- 透過 Reflection 自動導出所有標記 `#[Expose]` 的屬性
 - 支援嵌套 ImmutableBase 物件的遞迴序列化
 - `json_encode()` 等同於 `toArray()` 的輸出
 
@@ -307,7 +262,6 @@ $user = $user->with([
 4. **屬性標註規則**：
    - **推薦**：使用架構模式標註 `#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]`
    - **陣列處理**：使用 `#[ArrayOf(ClassName::class)]` 進行陣列自動實例化
-   - **將棄用**：`#[Expose]`、`#[Reason]`、`#[Relaxed]` 標註（v2.3.0 將棄用）
    - DataTransferObject 要求所有屬性為 `public readonly`
    - ValueObject 和 Entity 要求所有屬性為 `private`
 
