@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ReallifeKip\ImmutableBase;
 
+use Closure;
 use Exception;
 use ReflectionClass;
 use JsonSerializable;
@@ -57,9 +58,11 @@ abstract class ImmutableBase implements JsonSerializable
 {
     /** @var ReflectionClass[] $reflectionsCache */
     private static array $reflectionsCache = [];
+    private static array $classBoundSetter = [];
     public function __construct(array $data = [])
     {
-        $this->walkProperties(function (\ReflectionProperty $property) use ($data): void {
+        $thisClass = (new ReflectionClass($this))->getName();
+        $this->walkProperties(function (\ReflectionProperty $property) use ($thisClass, $data) {
             try {
                 $key = $property->getName();
                 /** @var \ReflectionNamedType|\ReflectionUnionType $type */
@@ -94,7 +97,23 @@ abstract class ImmutableBase implements JsonSerializable
                     $exists => $this->valueDecide($type, $data[$key]),
                     default => null
                 };
-                $property->setValue($this, $value);
+                $declaring = $property->getDeclaringClass()->getName();
+                $isOwn = ($declaring === $thisClass);
+                if (!$isOwn && $property->isReadOnly()) {
+                    if ($property->isInitialized($this)) {
+                        return;
+                    }
+                    $assign = self::$classBoundSetter[$declaring] ??= Closure::bind(
+                        function (object $obj, string $prop, mixed $val): void {
+                            $obj->$prop = $val;
+                        },
+                        null,
+                        $declaring
+                    );
+                    $assign($this, $property->getName(), $value);
+                } else {
+                    $property->setValue($this, $value);
+                }
             } catch (Exception $e) {
                 if ($msg = $e->getMessage()) {
                     throw new Exception("$key $msg");
