@@ -221,7 +221,10 @@ abstract class ImmutableBase implements JsonSerializable
                 throw new Exception('型別為複合且不包含array，須傳入已實例化的物件。');
             }
             foreach ($type->getTypes() as $t) {
-                return $this->valueDecide($t, $value);
+                try {
+                    return $this->valueDecide($t, $value);
+                } catch (Exception $e) {
+                }
             }
             $excepts = implode('|', $names);
             $valueType = (is_object($value) ? get_class($value) : gettype($value));
