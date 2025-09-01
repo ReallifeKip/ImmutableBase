@@ -71,26 +71,34 @@ abstract class ImmutableBase implements JsonSerializable
                 $nullable = $type->allowsNull();
                 $hasDefault = $property->hasDefaultValue();
                 $arrayOf = $property->getAttributes(ArrayOf::class);
-                $class = null;
+                $arg = null;
                 if ($arrayOf) {
                     if ($arrayOf[0]->newInstance()->error) {
                         throw new Exception('ArrayOf class 不能為空');
                     }
-                    $class = $arrayOf[0]->getArguments()[0];
-                    if (!is_subclass_of($class, self::class)) {
+                    $arg = $arrayOf[0]->getArguments()[0];
+                    if (!enum_exists($arg) && !is_subclass_of($arg, self::class)) {
                         throw new Exception('ArrayOf 指定的 class 必須為 ImmutableBase 的子類');
                     }
                 }
                 $value = match(true) {
                     !$exists && !$nullable => throw new Exception("必須傳入 $type"),
-                    $arrayOf && $class => array_map(function ($item) use ($class) {
-                        if (is_array($item)) {
-                            return new $class($item);
-                        } elseif ($item instanceof $class) {
-                            return $item;
-                        } else {
-                            throw new Exception("必須傳入 array 或 $class 實例");
+                    $arrayOf && $arg => array_map(function ($item) use ($arg) {
+                        $case = null;
+                        if (enum_exists($arg)) {
+                            $names = array_column($arg::cases(), 'name');
+                            if (in_array($item, $names)) {
+                                $case = $arg::{$item};
+                            } elseif (is_int($item) || is_string($item)) {
+                                $case = $arg::tryFrom($item);
+                            }
                         }
+                        return match(true) {
+                            is_array($item) => new $arg($item),
+                            $item instanceof $arg => $item,
+                            $case !== null => $arg::{$case->name},
+                            default => throw new Exception("必須傳入 array 或 array<{$arg}>")
+                        };
                     }, $data[$key]),
                     !$exists && $nullable && !$hasDefault => null,
                     !$exists && $nullable && $hasDefault => $property->getDefaultValue(),
