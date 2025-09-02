@@ -68,6 +68,8 @@ abstract class ImmutableBase implements JsonSerializable
                 /** @var \ReflectionNamedType|\ReflectionUnionType $type */
                 $type = $property->getType();
                 $exists = array_key_exists($key, $data);
+                $isNull = !isset($data[$key]) ? true : is_null($data[$key]);
+                $notExistsOrIsNull = (!$exists || $isNull);
                 $nullable = $type->allowsNull();
                 $hasDefault = $property->hasDefaultValue();
                 $arrayOf = $property->getAttributes(ArrayOf::class);
@@ -82,26 +84,30 @@ abstract class ImmutableBase implements JsonSerializable
                     }
                 }
                 $value = match(true) {
-                    !$exists && !$nullable => throw new Exception("必須傳入 $type"),
-                    $arrayOf && $arg => array_map(function ($item) use ($arg) {
-                        $case = null;
-                        if (enum_exists($arg)) {
-                            $names = array_column($arg::cases(), 'name');
-                            if (in_array($item, $names)) {
-                                $case = $arg::{$item};
-                            } elseif (is_int($item) || is_string($item)) {
-                                $case = $arg::tryFrom($item);
+                    $notExistsOrIsNull && !$nullable => throw new Exception("必須傳入 $type"),
+                    $arrayOf && $arg => match(true) {
+                        $notExistsOrIsNull && $nullable => null,
+                        $notExistsOrIsNull && !$nullable => throw new Exception("必須傳入 array 或 array<{$arg}>"),
+                        $exists => is_array($data[$key]) ? array_map(function ($item) use ($arg) {
+                            $case = null;
+                            if (enum_exists($arg)) {
+                                $names = array_column($arg::cases(), 'name');
+                                if (in_array($item, $names)) {
+                                    $case = $arg::{$item};
+                                } elseif (is_int($item) || is_string($item)) {
+                                    $case = $arg::tryFrom($item);
+                                }
                             }
-                        }
-                        return match(true) {
-                            is_array($item) => new $arg($item),
-                            $item instanceof $arg => $item,
-                            $case !== null => $arg::{$case->name},
-                            default => throw new Exception("必須傳入 array 或 array<{$arg}>")
-                        };
-                    }, $data[$key]),
-                    !$exists && $nullable && !$hasDefault => null,
-                    !$exists && $nullable && $hasDefault => $property->getDefaultValue(),
+                            return match(true) {
+                                is_array($item) => new $arg($item),
+                                $item instanceof $arg => $item,
+                                $case !== null => $arg::{$case->name},
+                                default => throw new Exception("陣列內容必須是 $arg 或符合其初始化所需之結構")
+                            };
+                        }, $data[$key]) : throw new Exception("必須傳入 array"),
+                    },
+                    $notExistsOrIsNull && $nullable && !$hasDefault => null,
+                    $notExistsOrIsNull && $nullable && $hasDefault => $property->getDefaultValue(),
                     $exists => $this->valueDecide($type, $data[$key]),
                     default => null
                 };
