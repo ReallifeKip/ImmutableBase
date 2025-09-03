@@ -1,6 +1,6 @@
 {
   "name": "reallifekip/immutable-base",
-  "description": "適用於 DTO, VO 等不可變物件的基礎抽象類別",
+  "description": "Lightweight abstract classes for building immutable PHP objects.",
   "type": "library",
   "license": "MIT",
   "autoload": {
@@ -19,6 +19,7 @@
   ],
   "keywords": [
     "dto",
+    "data-transfer-object",
     "value-object",
     "immutable"
   ]
