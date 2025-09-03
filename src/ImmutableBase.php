@@ -204,6 +204,7 @@ abstract class ImmutableBase implements JsonSerializable
             $value = $property->getValue($this);
             $key = $property->getName();
             if (is_array($value)) {
+                $properties[$key] = [];
                 foreach ($value as $v) {
                     if (is_object($v) && method_exists($v, 'toArray')) {
                         $properties[$key][] = $v->toArray();
