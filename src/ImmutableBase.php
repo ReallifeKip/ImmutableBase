@@ -213,12 +213,10 @@ abstract class ImmutableBase implements JsonSerializable
                     }
                 }
             } else {
-                if ($property->getType()->isBuiltin()) {
-                    $properties[$key] = $value;
-                } elseif (is_object($value) && method_exists($value, 'toArray')) {
+                if (is_object($value) && method_exists($value, 'toArray')) {
                     $properties[$key] = $value->toArray();
                 } elseif ($value) {
-                    throw new Exception('不是一種 class 或未提供 toArray 方法');
+                    $properties[$key] = $value;
                 }
             }
         });
