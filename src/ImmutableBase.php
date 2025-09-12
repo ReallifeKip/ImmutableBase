@@ -215,7 +215,7 @@ abstract class ImmutableBase implements JsonSerializable
             } else {
                 if (is_object($value) && method_exists($value, 'toArray')) {
                     $properties[$key] = $value->toArray();
-                } elseif ($value) {
+                } else {
                     $properties[$key] = $value;
                 }
             }
