@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## [v3.0.0-rc1] - 2025-10-13
+
+### 🐞 修正
+
+- 修復 with 寫入 null 時 valueDecide 仍返回原始值的問題
+
+### ✨ 功能改進
+
+- 移除 construct Enum 檢查邏輯，移至 valueDecide
+- 優化 walkProperties 物件判斷條件
+- 新增多層繼承屬性鏈巡覽與宣告層級過濾機制
+- 擴展 Enum 支援度：現允許以 Enum 實例、key、value 方式傳入
+
+### 🔧 重構
+
+- 簡化 toArray 代碼結構
+- 提升整體可讀性
+
 ## [v2.4.5] - 2025-09-12
 
 ### 🐞 修正
