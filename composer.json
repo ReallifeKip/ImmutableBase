@@ -8,6 +8,11 @@
       "ReallifeKip\\ImmutableBase\\": "src/"
     }
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
   "require": {
     "php": "^8.0"
   },
@@ -22,5 +27,8 @@
     "data-transfer-object",
     "value-object",
     "immutable"
-  ]
+  ],
+  "require-dev": {
+    "phpunit/phpunit": "^10"
+  }
 }
