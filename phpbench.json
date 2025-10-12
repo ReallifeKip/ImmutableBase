@@ -1,0 +1,16 @@
+{
+  "$schema": "./vendor/phpbench/phpbench/phpbench.schema.json",
+  "runner.bootstrap": "vendor/autoload.php",
+  "runner.path": "benchmarks",
+  "report.outputs": {
+    "my_csv_output": {
+      "extends": "delimited",
+      "delimiter": ","
+    }
+  },
+  "report.generators": {
+    "my_report": {
+      "extends": "aggregate"
+    }
+  }
+}
