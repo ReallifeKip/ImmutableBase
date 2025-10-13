@@ -1,4 +1,4 @@
-name: Test & Upload Coverage
+name: Test & Security Analysis
 
 on:
   push:
@@ -8,8 +8,10 @@ on:
 
 jobs:
   test:
+    strategy:
+      matrix:
+        php: [8.1, 8.2, 8.3, 8.4]
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,14 +19,14 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
+          php-version: ${{ matrix.php }}
           coverage: xdebug
 
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Run PHPUnit with coverage
-        run: vendor/bin/phpunit --configuration phpunit.xml --coverage-clover coverage.xml
+        run: vendor/bin/phpunit --configuration phpunit.xml --coverage-clover coverage.xml --coverage-text
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -33,3 +35,18 @@ jobs:
           files: coverage.xml
           flags: phpunit
           fail_ci_if_error: true
+
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: none
+          packs: codeql/php-queries@latest
+
+      - uses: github/codeql-action/analyze@v3
