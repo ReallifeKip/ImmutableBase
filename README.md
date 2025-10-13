@@ -1,4 +1,6 @@
 # ImmutableBase
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FReallifeKip%2FImmutableBase.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FReallifeKip%2FImmutableBase?ref=badge_shield)
+
 
 一個專為 **不可變物件（Immutable Object）** 設計的抽象基底類別，適用於 **DTO（Data Transfer Object）**、**VO（Value Object）** 等需要「一次初始化、不可更改」的場景。
 
@@ -354,6 +356,9 @@ echo json_encode($relocatedUser, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 本套件使用 [MIT License](https://opensource.org/license/mit/)
 
 ---
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FReallifeKip%2FImmutableBase.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FReallifeKip%2FImmutableBase?ref=badge_large)
 
 ## 開發者資訊
 
