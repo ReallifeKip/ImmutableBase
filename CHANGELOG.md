@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## [v3.0.0] - 2025-10-13
+
+### ⚠️ 重大變更
+
+- 最低 PHP 支援版本提升從 8.0 提高至 8.1
+
+### 🐞 修正
+
+- 修復 with 寫入 null 時 valueDecide 仍返回原始值的問題
+
+### ✨ 功能改進
+
+- 移除 construct Enum 檢查邏輯，移至 valueDecide
+- 優化 walkProperties 物件判斷條件
+- 新增多層繼承屬性鏈巡覽與宣告層級過濾機制
+- 擴展 Enum 支援度：現允許以 Enum 實例、key、value 方式傳入
+
+### 📜 測試
+
+- 新增 defaultBench，涵蓋 Basic、Advanced、Enum 相關性能場景
+- 新增 phpbench 設定檔，統一自動載入與輸出格式
+- 確立核心建構、序列化、巢狀結構與 with 操作效能基線
+- 新增 Basic、Advanced、Initialized、Enum 等測試物件
+- 建立完整測試（覆蓋率 100%），覆蓋所有核心行為與例外情境
+
+### 🧰 開發與持續整合
+- 新增 phpunit 自動化測試及產出報告 #範圍涵蓋 PHP 8.1 ~ 8.4
+- 新增 FOSSA 相依與安全性檢測
+- 新增 SONAR 品質檢測
+
+### 🔧 重構
+
+- 簡化 toArray 代碼結構
+- 提升整體可讀性
+
 ## [v2.4.5] - 2025-09-12
 
 ### 🐞 修正
