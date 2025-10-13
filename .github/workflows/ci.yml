@@ -45,4 +45,27 @@ jobs:
         with:
           api-key: ${{ secrets.FOSSA_TOKEN }}
 
-  
+  SONAR:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          coverage: xdebug
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=reallifekip_immutablebase
+            -Dsonar.organization=reallifekip
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
