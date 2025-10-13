@@ -1,4 +1,4 @@
-name: Test & Security Analysis
+name: CI
 
 on:
   push:
@@ -36,16 +36,13 @@ jobs:
           flags: phpunit
           fail_ci_if_error: true
 
-  analyze:
+  FOSSA:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - uses: github/codeql-action/init@v3
+      - name: Run FOSSA scan
+        uses: fossas/fossa-action@v1
         with:
-          packs: codeql/php-queries@latest
+          api-key: ${{ secrets.FOSSA_TOKEN }}
 
-      - uses: github/codeql-action/analyze@v3
+  
