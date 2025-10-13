@@ -1,0 +1,35 @@
+name: Test & Upload Coverage
+
+on:
+  push:
+    branches: [main, v3.0.0-rc]
+  pull_request:
+    branches: [main, v3.0.0-rc]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v4
+        with:
+          php-version: '8.1'
+          coverage: xdebug
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run PHPUnit with coverage
+        run: vendor/bin/phpunit --configuration phpunit.xml --coverage-clover coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: phpunit
+          fail_ci_if_error: true
