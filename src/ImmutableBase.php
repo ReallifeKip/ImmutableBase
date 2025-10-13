@@ -235,7 +235,7 @@ abstract class ImmutableBase
                     $type->allowsNull() && $value === null => null,
                     is_string($value) && enum_exists($class) => (function () use ($class, $value) {
                         try {
-                            return $class::tryFrom($value) ?? $class::{$value};
+                            return $class::tryFrom($value) ?? constant("$class::$value");
                         } catch (Throwable) {
                             throw new Exception("$value 不是 $class 的期望值");
                         }
