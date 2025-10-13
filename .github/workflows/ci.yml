@@ -65,7 +65,7 @@ jobs:
         with:
           projectBaseDir: .
           args: >
-            -Dsonar.projectKey=reallifekip_immutablebase
+            -Dsonar.projectKey=ReallifeKip_ImmutableBase
             -Dsonar.organization=reallifekip
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
