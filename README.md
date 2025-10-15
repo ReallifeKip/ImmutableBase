@@ -22,7 +22,7 @@
 
 一個專為 **不可變物件（Immutable Object）** 設計的抽象基底類別，適用於 **DTO（Data Transfer Object）**、**VO（Value Object）** 等需要「一次初始化、不可更改」的場景。
 
-此類別強調資料的**不可變性（Immutability）**、**類型安全（Type Safety）**，並可透過建構式快速初始化、內建型別自動轉換機制、淺層複製 (`with`) 以及自動序列化支援 (`toArray`, `jsonSerialize`)。
+此類別強調資料的**不可變性（Immutability）**、**類型安全（Type Safety）**，並可透過建構式快速初始化、內建型別自動轉換機制、淺層複製 (`with`) 以及序列化支援 (`toArray`)。
 
 ---
 
@@ -33,7 +33,6 @@
 - ✅ **支援 `ReflectionUnionType` 型別解析**
 - ✅ **遞迴初始化巢狀 ImmutableBase 子類**
 - ✅ **支援 `with([...])` 複製模式，包含嵌套物件更新**
-- ✅ **自動 `toArray()` 與 `jsonSerialize()`**
 - ✅ **架構模式標註：`#[DataTransferObject]`、`#[ValueObject]`、`#[Entity]` (必須)**
 - ✅ **陣列自動實例化：`#[ArrayOf]` 含類型驗證**
 - ✅ **強制屬性訪問控制與型別安全**
@@ -43,10 +42,13 @@
 ## 測試
 
 ### 單元測試
+
 ```bash
 vendor/bin/phpunit tests
 ```
+
 ### 效能測試
+
 ```bash
 vendor/bin/phpbench run
 ```
@@ -272,10 +274,9 @@ $user = $user->with([
 
 ---
 
-### 自動 `toArray()` 與 `jsonSerialize()`
+### `toArray()`
 
 - 支援嵌套 ImmutableBase 物件的遞迴序列化
-- `json_encode()` 等同於 `toArray()` 的輸出
 
 ---
 
