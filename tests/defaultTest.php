@@ -321,6 +321,23 @@ class defaultTest extends TestCase
         );
     }
     /**
+     * 驗證 Union 包含非內建型別 toArray() 與修改資料一致。
+     */
+    public function testAdvancedByArrayWithUnionToNotBuiltin()
+    {
+        $basic = new Basic($this->basicData);
+        $advanced = new Advanced($this->modifyAdvancedDataByArray);
+        $modified = $advanced->with(['union' => $basic]);
+        $modifiedArray = $modified->toArray();
+        $this->assertEquals(
+            array_merge(
+                $this->modifyAdvancedDataByArray,
+                ['union' => $basic->toArray()]
+            ),
+            $modifiedArray
+        );
+    }
+    /**
      * 驗證 Basic->with()->toArray() 與修改資料一致。
      */
     public function testBasicWithToArray()
@@ -459,7 +476,7 @@ class defaultTest extends TestCase
     {
         $advanced = new Advanced($this->advancedDataByArray);
         $this->expectException(Exception::class);
-        $this->expectExceptionMessage('union 型別錯誤，期望：string|int，傳入：double');
+        $this->expectExceptionMessage('union 型別錯誤，期望：Tests\DataTransferObjects\Basic|string|int，傳入：double');
         $advanced->with(['union' => 1.1]);
     }
     /**
@@ -528,7 +545,7 @@ class defaultTest extends TestCase
         };
     }
     /**
-     * 驗證 ValueObject 屬性為 public 時應拋出 Exception。
+     * 驗證 ValueObject 屬性為 public 時拋出 Exception。
      */
     public function testPropertyShouldNotBePublicThrowException()
     {
@@ -537,5 +554,19 @@ class defaultTest extends TestCase
         new #[ValueObject] class () extends ImmutableBase {
             public string $string;
         };
+    }
+
+    /**
+     * 驗證 Union 嘗試歷遍後無吻合型別拋出 Exception。
+     */
+    public function testUnionTypesSkipTilCorrectThrowException()
+    {
+        $this->expectException(Exception::class);
+        new Advanced(
+            array_merge(
+                $this->modifyAdvancedDataByArray,
+                ['union' => 1.1]
+            )
+        );
     }
 }

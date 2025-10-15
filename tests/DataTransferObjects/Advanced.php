@@ -12,6 +12,6 @@ class Advanced extends Basic
     /** @var Basic[] */
     #[ArrayOf(Basic::class)]
     public readonly array $arrayOfBasics;
-    public readonly string|int $union;
+    public readonly string|int|Basic $union;
     public readonly null|string|int $unionNullable;
 }

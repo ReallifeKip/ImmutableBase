@@ -45,12 +45,9 @@ final class Entity
 final class ArrayOf
 {
     public bool $error = false;
-    public function __construct(
-        public string $class = '',
-    ) {
-        if (trim($this->class) === '') {
-            $this->error = true;
-        }
+    public function __construct(string $class = '')
+    {
+        $this->error = empty(trim($class));
     }
 }
 
@@ -67,7 +64,7 @@ abstract class ImmutableBase
                 /** @var \ReflectionNamedType|\ReflectionUnionType $type */
                 $type               = $property->getType();
                 $exists             = array_key_exists($key, $data);
-                $isNull             = !isset($data[$key]) ? true : $data[$key] === null;
+                $isNull             = !isset($data[$key]) || $data[$key] === null;
                 $notExistsOrIsNull  = !$exists || $isNull;
                 $nullable           = $type->allowsNull();
                 $hasDefault         = $property->hasDefaultValue();
@@ -78,49 +75,51 @@ abstract class ImmutableBase
                         throw new Exception('ArrayOf class 不能為空');
                     }
                     $arg = $arrayOf[0]->getArguments()[0];
-                    if (!enum_exists($arg) && !is_subclass_of($arg, self::class)) {
+                    if (!is_subclass_of($arg, self::class)) {
                         throw new Exception('ArrayOf 指定的 class 必須為 ImmutableBase 的子類');
                     }
                 }
-                $value = match(true) {
-                    $notExistsOrIsNull && !$nullable        => throw new Exception("必須傳入 $type"),
-                    $arrayOf && $arg                        =>
-                        match(true) {
-                            $notExistsOrIsNull && $nullable     => null,
-                            $notExistsOrIsNull && !$nullable    => throw new Exception("必須傳入 array 或 array<{$arg}>"),
-                            $exists                             => is_array($data[$key]) ?
-                            array_map(fn ($item) => match(true) {
-                                is_array($item)     => new $arg($item),
-                                $item instanceof $arg       => $item,
-                                default                     => throw new Exception("陣列內容必須是 $arg 或符合其初始化所需之結構")
-                            }, $data[$key]) : throw new Exception("必須傳入 array"),
+                $this->propertyInitialize(
+                    $property,
+                    match(true) {
+                        $notExistsOrIsNull => match(true) {
+                            !$nullable  => throw new Exception("必須傳入 $type"),
+                            $nullable   => $hasDefault ? $property->getDefaultValue() : null,
                         },
-                    $notExistsOrIsNull && $nullable && !$hasDefault => null,
-                    $notExistsOrIsNull && $nullable && $hasDefault  => $property->getDefaultValue(),
-                    $exists                                         => $this->valueDecide($type, $data[$key]),
-                };
-                $declaring = $property->getDeclaringClass()->getName();
-                if ($declaring !== $this::class && $property->isReadOnly()) {
-                    if ($property->isInitialized($this)) {
-                        return;
+                        $arrayOf && $arg =>
+                            match(true) {
+                                $notExistsOrIsNull => throw new Exception("必須傳入 array 或 array<{$arg}>"),
+                                is_array($data[$key]) =>
+                                array_map(fn ($item) => match(true) {
+                                    is_array($item)     => new $arg($item),
+                                    $item instanceof $arg       => $item,
+                                    default                     => throw new Exception("陣列內容必須是 $arg 或符合其初始化所需之結構")
+                                }, $data[$key]),
+                                default => throw new Exception("必須傳入 array"),
+                            },
+                        $exists                                         => $this->valueDecide($type, $data[$key]),
                     }
-                    $assign = self::$classBoundSetter[$declaring] ??= Closure::bind(
-                        function (object $obj, string $prop, mixed $val): void {
-                            $obj->$prop = $val;
-                        },
-                        null,
-                        $declaring
-                    );
-                    $assign($this, $property->getName(), $value);
-                } else {
-                    $property->setValue($this, $value);
-                }
+                );
             } catch (Exception $e) {
-                if ($msg = $e->getMessage()) {
-                    throw new Exception("$key $msg");
-                }
+                throw new Exception("$key {$e->getMessage()}");
             }
         });
+    }
+    private function propertyInitialize(\ReflectionProperty $property, mixed $value): void
+    {
+        $declaring = $property->getDeclaringClass()->getName();
+        if ($declaring !== $this::class && $property->isReadOnly()) {
+            if ($property->isInitialized($this)) {
+                return;
+            }
+            (self::$classBoundSetter[$declaring] ??= Closure::bind(
+                fn (object $obj, string $prop, mixed $val) => $obj->$prop = $val,
+                null,
+                $declaring
+            ))($this, $property->getName(), $value);
+        } else {
+            $property->setValue($this, $value);
+        }
     }
     private static function getReflection(object $obj): ReflectionClass
     {
@@ -135,7 +134,7 @@ abstract class ImmutableBase
     {
         $ref   = self::getReflection($this);
         $attrs = array_map(fn ($attr) => $attr->getName(), $ref->getAttributes());
-        $set   = array_fill_keys($attrs, true);
+        $set   = array_flip($attrs);
         $mode = match (true) {
             isset($set[DataTransferObject::class]) => 1,
             isset($set[ValueObject::class])        => 2,
@@ -148,21 +147,18 @@ abstract class ImmutableBase
         }
         $chain = array_reverse($chain);
         foreach ($chain as $cls) {
-            foreach ($cls->getProperties() as $p) {
+            $properties = $cls->getProperties();
+            array_filter($properties, fn ($p) => $p->getName() === $cls->getName() || $cls->getName() !== self::class);
+            foreach ($properties as $p) {
                 $isPublic = $p->isPublic();
                 $propertyName = $p->getName();
                 $className = $p->getDeclaringClass()->getName();
-                if ($className !== $cls->getName() || $className === self::class) {
-                    continue;
-                }
-                if ($mode === 2 || $mode === 3) {
-                    if ($isPublic) {
-                        throw new Exception("$className $propertyName 不允許為 public");
-                    }
-                } else {
+                if ($mode === 1) {
                     if (!$isPublic || !$p->isReadOnly()) {
                         throw new Exception("$className $propertyName 必須為 public 且 readonly");
                     }
+                } elseif ($isPublic) {
+                    throw new Exception("$className $propertyName 不允許為 public");
                 }
                 $callback($p);
             }
@@ -182,7 +178,7 @@ abstract class ImmutableBase
             try {
                 $name = $property->getName();
                 $type = $property->getType();
-                $newData[$name] = in_array($name, array_keys($data)) ?
+                $newData[$name] = array_key_exists($name, $data) ?
                     $this->valueDecide($type, $data[$name]) :
                     $property->getValue($this);
             } catch (Exception $e) {
@@ -208,57 +204,73 @@ abstract class ImmutableBase
     }
     private function toArrayOrValue(mixed $value)
     {
-        return is_object($value) && method_exists($value, 'toArray') ? $value->toArray() : $value;
-    }
-    private function valueDecide(ReflectionNamedType|ReflectionUnionType $type, mixed $value): mixed
-    {
-        if ($type instanceof ReflectionUnionType) {
-            $names = array_map(fn ($e) => $e->getName(), $type->getTypes());
-            if (!in_array('array', $names, true) && is_array($value)) {
-                throw new Exception('型別為複合且不包含array，須傳入已實例化的物件。');
-            }
-            foreach ($type->getTypes() as $t) {
-                try {
-                    return $this->valueDecide($t, $value);
-                } catch (Exception) {
-                }
-            }
-            $excepts = implode('|', $names);
-            $valueType = is_object($value) ? get_class($value) : gettype($value);
-            throw new Exception("型別錯誤，期望：{$excepts}，傳入：{$valueType}。");
-        } else {
-            if (!$type->isBuiltin()) {
-                $class = $type->getName();
-                $value = match(true) {
-                    is_array($value) && is_subclass_of($class, self::class) => new $class($value),
-                    is_object($value) => $value,
-                    $type->allowsNull() && $value === null => null,
-                    is_string($value) && enum_exists($class) => (function () use ($class, $value) {
-                        try {
-                            return $class::tryFrom($value) ?? constant("$class::$value");
-                        } catch (Throwable) {
-                            throw new Exception("$value 不是 $class 的期望值");
-                        }
-                    })(),
-                    default => throw new Exception("型別錯誤，期望：{$class}，傳入：" . (is_object($value) ? get_class($value) : gettype($value)))
-                };
-            } elseif ($this->builtinTypeValidate($value, $type->getName()) === false) {
-                if ($type->allowsNull() && $value === null) {
-                    return null;
-                } else {
-                    throw new Exception("型別錯誤，期望：{$type->getName()}，傳入：".(is_object($value) ? get_class($value) : gettype($value)));
-                }
+        if (is_object($value)) {
+            if (method_exists($value, 'toArray')) {
+                return $value->toArray();
             }
         }
         return $value;
     }
+    private function valueDecide(ReflectionNamedType|ReflectionUnionType $type, mixed $value): mixed
+    {
+        if ($type instanceof ReflectionUnionType) {
+            return $this->unionTypeDecide($type, $value);
+        } else {
+            if (!$type->isBuiltin()) {
+                return $this->namedTypeDecide($type, $value);
+            } elseif (
+                $this->builtinTypeValidate($value, $type->getName()) === false &&
+                !$this->validNullValue($type, $value)
+            ) {
+                throw new Exception("型別錯誤，期望：{$type->getName()}，傳入：".(is_object($value) ? get_class($value) : gettype($value)));
+            }
+        }
+        return $value;
+    }
+    private function unionTypeDecide(ReflectionUnionType $type, mixed $value)
+    {
+        $names = array_map(fn ($e) => $e->getName(), $type->getTypes());
+        if (!in_array('array', $names, true) && is_array($value)) {
+            throw new Exception('型別為複合且不包含array，須傳入已實例化的物件。');
+        }
+        foreach ($type->getTypes() as $t) {
+            try {
+                return $this->valueDecide($t, $value);
+            } catch (Exception) {
+            }
+        }
+        $excepts = implode('|', $names);
+        $valueType = is_object($value) ? get_class($value) : gettype($value);
+        throw new Exception("型別錯誤，期望：{$excepts}，傳入：{$valueType}。");
+    }
+    private function namedTypeDecide(ReflectionNamedType $type, mixed $value)
+    {
+        $class = $type->getName();
+        return match(true) {
+            is_array($value) && is_subclass_of($class, self::class) => new $class($value),
+            is_object($value) => $value,
+            $this->validNullValue($type, $value) => null,
+            is_string($value) && enum_exists($class) => (function () use ($class, $value) {
+                try {
+                    return $class::tryFrom($value) ?? constant("$class::$value");
+                } catch (Throwable) {
+                    throw new Exception("$value 不是 $class 的期望值");
+                }
+            })(),
+            default => throw new Exception("型別錯誤，期望：{$class}，傳入：" . (is_object($value) ? get_class($value) : gettype($value)))
+        };
+    }
+    private function validNullValue(ReflectionNamedType $type, $value)
+    {
+        return $type->allowsNull() && $value === null;
+    }
     private function builtinTypeValidate(mixed $value, string $type): bool
     {
         return match ($type) {
-            'int', 'integer'    => is_int($value),
-            'float', 'double'   => is_float($value),
+            'int'               => is_int($value),
+            'float'             => is_float($value),
             'string'            => is_string($value),
-            'bool', 'boolean'   => is_bool($value),
+            'bool'              => is_bool($value),
             'array'             => is_array($value),
             'object'            => is_object($value),
             'null'              => $value === null,
