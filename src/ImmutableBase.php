@@ -113,7 +113,7 @@ abstract class ImmutableBase
     {
         $this->ref ??= self::getReflection($this);
         foreach ($this->ref->getAttributes() as $attr) {
-            $set[$attr->name] = true;
+            $set[$attr->name ?? $attr->getName()] = true;
         }
         $this->mode ??= match (true) {
             isset($set[DataTransferObject::class]) => 1,
