@@ -9,6 +9,7 @@ use Exception;
 use Throwable;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionProperty;
 use ReflectionUnionType;
 
 /**
@@ -53,11 +54,14 @@ final class ArrayOf
 
 abstract class ImmutableBase
 {
+    private int $mode;
+    private ReflectionClass $ref;
     /** @var ReflectionClass[] $reflectionsCache */
     private static array $reflectionsCache = [];
     private static array $classBoundSetter = [];
     public function __construct(array $data = [])
     {
+        $this->constructInitialize();
         $this->walkProperties(function (\ReflectionProperty $property) use ($data) {
             try {
                 $key                = $property->name;
@@ -105,9 +109,22 @@ abstract class ImmutableBase
             }
         });
     }
+    private function constructInitialize()
+    {
+        $this->ref ??= self::getReflection($this);
+        foreach ($this->ref->getAttributes() as $attr) {
+            $set[$attr->name] = true;
+        }
+        $this->mode ??= match (true) {
+            isset($set[DataTransferObject::class]) => 1,
+            isset($set[ValueObject::class])        => 2,
+            isset($set[Entity::class])             => 3,
+            default => throw new Exception('ImmutableBase 子類必須使用 DataTransferObject、ValueObject 或 Entity 任一標註'),
+        };
+    }
     private function propertyInitialize(\ReflectionProperty $property, mixed $value): void
     {
-        $declaring = $property->getDeclaringClass()->getName();
+        $declaring = $property->class;
         if ($declaring !== $this::class && $property->isReadOnly()) {
             if ($property->isInitialized($this)) {
                 return;
@@ -116,7 +133,7 @@ abstract class ImmutableBase
                 fn (object $obj, string $prop, mixed $val) => $obj->$prop = $val,
                 null,
                 $declaring
-            ))($this, $property->getName(), $value);
+            ))($this, $property->name, $value);
         } else {
             $property->setValue($this, $value);
         }
@@ -132,36 +149,23 @@ abstract class ImmutableBase
      */
     private function walkProperties(callable $callback): void
     {
-        $ref   = self::getReflection($this);
-        $attrs = array_map(fn ($attr) => $attr->getName(), $ref->getAttributes());
-        $set   = array_flip($attrs);
-        $mode = match (true) {
-            isset($set[DataTransferObject::class]) => 1,
-            isset($set[ValueObject::class])        => 2,
-            isset($set[Entity::class])             => 3,
-            default => throw new Exception('ImmutableBase 子類必須使用 DataTransferObject、ValueObject 或 Entity 任一標註'),
-        };
-        $chain = [];
-        for ($c = $ref; $c && $c->getName() !== self::class; $c = $c->getParentClass()) {
-            $chain[] = $c;
+        $properties = [];
+        for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
+            array_unshift($properties, ...$c->getProperties());
         }
-        $chain = array_reverse($chain);
-        foreach ($chain as $cls) {
-            $properties = $cls->getProperties();
-            array_filter($properties, fn ($p) => $p->getName() === $cls->getName() || $cls->getName() !== self::class);
-            foreach ($properties as $p) {
-                $isPublic = $p->isPublic();
-                $propertyName = $p->getName();
-                $className = $p->getDeclaringClass()->getName();
-                if ($mode === 1) {
-                    if (!$isPublic || !$p->isReadOnly()) {
-                        throw new Exception("$className $propertyName 必須為 public 且 readonly");
-                    }
-                } elseif ($isPublic) {
-                    throw new Exception("$className $propertyName 不允許為 public");
+        foreach ($properties as $p) {
+            /** @var ReflectionProperty $p */
+            $isPublic = $p->isPublic();
+            $propertyName =  $p->name;
+            $className = $p->class;
+            if ($this->mode === 1) {
+                if (!$isPublic || !$p->isReadOnly()) {
+                    throw new Exception("$className $propertyName 必須為 public 且 readonly");
                 }
-                $callback($p);
+            } elseif ($isPublic) {
+                throw new Exception("$className $propertyName 不允許為 public");
             }
+            $callback($p);
         }
     }
 
@@ -176,7 +180,7 @@ abstract class ImmutableBase
         $ref = self::getReflection($this);
         foreach ($ref->getProperties() as $property) {
             try {
-                $name = $property->getName();
+                $name = $property->name;
                 $type = $property->getType();
                 $newData[$name] = array_key_exists($name, $data) ?
                     $this->valueDecide($type, $data[$name]) :
@@ -196,7 +200,7 @@ abstract class ImmutableBase
     {
         $properties = [];
         $this->walkProperties(function (\ReflectionProperty $property) use (&$properties) {
-            $properties[$property->getName()] = is_array($value = $property->getValue($this)) ?
+            $properties[$property->name] = is_array($value = $property->getValue($this)) ?
                 array_map([$this, 'toArrayOrValue'], $value) :
                 $this->toArrayOrValue($value);
         });
@@ -222,25 +226,26 @@ abstract class ImmutableBase
                 $this->builtinTypeValidate($value, $type->getName()) === false &&
                 !$this->validNullValue($type, $value)
             ) {
-                throw new Exception("型別錯誤，期望：{$type->getName()}，傳入：".(is_object($value) ? get_class($value) : gettype($value)));
+                throw new Exception("型別錯誤，期望：{$type->getName()}，傳入：".(is_object($value) ? $value::class : gettype($value)));
             }
         }
         return $value;
     }
     private function unionTypeDecide(ReflectionUnionType $type, mixed $value)
     {
-        $names = array_map(fn ($e) => $e->getName(), $type->getTypes());
+        $types = $type->getTypes();
+        $names = array_map(fn ($e) => $e->getName(), $types);
         if (!in_array('array', $names, true) && is_array($value)) {
             throw new Exception('型別為複合且不包含array，須傳入已實例化的物件。');
         }
-        foreach ($type->getTypes() as $t) {
+        foreach ($types as $t) {
             try {
                 return $this->valueDecide($t, $value);
             } catch (Exception) {
             }
         }
         $excepts = implode('|', $names);
-        $valueType = is_object($value) ? get_class($value) : gettype($value);
+        $valueType = is_object($value) ? $value::class : gettype($value);
         throw new Exception("型別錯誤，期望：{$excepts}，傳入：{$valueType}。");
     }
     private function namedTypeDecide(ReflectionNamedType $type, mixed $value)
@@ -257,7 +262,7 @@ abstract class ImmutableBase
                     throw new Exception("$value 不是 $class 的期望值");
                 }
             })(),
-            default => throw new Exception("型別錯誤，期望：{$class}，傳入：" . (is_object($value) ? get_class($value) : gettype($value)))
+            default => throw new Exception("型別錯誤，期望：{$class}，傳入：" . (is_object($value) ? $value::class : gettype($value)))
         };
     }
     private function validNullValue(ReflectionNamedType $type, $value)
