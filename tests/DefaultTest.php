@@ -2,18 +2,26 @@
 
 namespace Tests;
 
-use Exception;
 use Tests\Enum;
 use PHPUnit\Framework\TestCase;
 use Tests\DataTransferObjects\Basic;
-use ReallifeKip\ImmutableBase\ArrayOf;
 use Tests\DataTransferObjects\Advanced;
 use Tests\DataTransferObjects\Initialized;
-use ReallifeKip\ImmutableBase\ValueObject;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use Tests\DataTransferObjects\BasicFromJson;
+use Tests\ExceptionObjects\ArrayOfEmptyClass;
 use ReallifeKip\ImmutableBase\DataTransferObject;
+use Tests\ExceptionObjects\ArrayOfNotExistsClass;
+use Tests\ExceptionObjects\ShouldBePrivateButPublic;
+use Tests\ExceptionObjects\ShouldBePublicButPrivate;
+use ReallifeKip\ImmutableBase\Exceptions\AttributeException;
+use ReallifeKip\ImmutableBase\Exceptions\InvalidTypeException;
+use ReallifeKip\ImmutableBase\Exceptions\InvalidJsonException;
+use ReallifeKip\ImmutableBase\Exceptions\InvalidArrayOfClassException;
+use ReallifeKip\ImmutableBase\Exceptions\NonNullablePropertyException;
+use ReallifeKip\ImmutableBase\Exceptions\InvalidPropertyVisibilityException;
 
-class defaultTest extends TestCase
+class DefaultTest extends TestCase
 {
     private array $nullableData;
     private array $basicData;
@@ -96,10 +104,8 @@ class defaultTest extends TestCase
         ];
     }
 
-    /**
-     * 驗證 Basic 類別可由 array 正確建立。
-     * 驗證建立後屬性型別與值（例如 array 與 object 欄位）。
-     */
+
+
     public function testBasic(): void
     {
         $basic = new Basic($this->basicData);
@@ -116,10 +122,6 @@ class defaultTest extends TestCase
             $basic->object
         );
     }
-    /**
-     * 驗證 Advanced 可由巢狀 array 建構。
-     * 驗證繼承自 Basic 的屬性可被初始化。
-     */
     public function testAdvancedByArray(): void
     {
         $advanced = new Advanced($this->advancedDataByArray);
@@ -136,10 +138,6 @@ class defaultTest extends TestCase
             $advanced->object
         );
     }
-    /**
-     * 驗證 Advanced 可由巢狀的 DTO/instance 建構（即 basic 與 arrayOfBasics 為實例）。
-     * 驗證 Advanced 屬性順序與初始資料順序一致。
-     */
     public function testAdvancedByInstance(): void
     {
         $advanced = new Advanced($this->advancedDataByInstance);
@@ -156,9 +154,6 @@ class defaultTest extends TestCase
             $advanced->object
         );
     }
-    /**
-     * 驗證 Basic->toArray() 與初始資料一致。
-     */
     public function testBasicToArray()
     {
         $basic = new Basic($this->basicData);
@@ -176,9 +171,6 @@ class defaultTest extends TestCase
             $basicArray['object']
         );
     }
-    /**
-     * 驗證 Advanced->toArray() 與初始資料一致。
-     */
     public function testAdvancedByArrayToArray()
     {
         $advanced = new Advanced($this->advancedDataByArray);
@@ -196,9 +188,6 @@ class defaultTest extends TestCase
             $advancedArray['object']
         );
     }
-    /**
-     * 驗證 Advanced->toArray() 時，巢狀 instance 可被初始化。
-     */
     public function testAdvancedByInstanceToArray()
     {
         $advanced = new Advanced($this->advancedDataByInstance);
@@ -225,10 +214,6 @@ class defaultTest extends TestCase
             $advancedArray['object']
         );
     }
-    /**
-     * 驗證 Basic->with() 資料修改並回傳新的實例。
-     * 驗證覆寫結果與覆寫資料一致。
-     */
     public function testBasicWith()
     {
         $basic = new Basic($this->basicData);
@@ -241,12 +226,23 @@ class defaultTest extends TestCase
             (object)[4,5,6],
             $modified->object
         );
+        $array = [
+            'some' => 'value'
+        ];
+        $object = (object)[
+            'string' => 'example',
+            'array' => json_encode($array)
+        ];
+        $modified = $basic->with($object);
+        $this->assertEquals(
+            $object->string,
+            $modified->string
+        );
+        $this->assertEquals(
+            $array,
+            $modified->array
+        );
     }
-    /**
-     * 驗證可鏈式呼叫 with()
-     * 驗證 null 更新 nullable 欄位。
-     * 驗證 nullable 欄位經更新後，於 toArray() 中變更為 null。
-     */
     public function testBasicWithNullForNullable()
     {
         $basic = new Basic($this->basicData);
@@ -260,10 +256,6 @@ class defaultTest extends TestCase
             $modifiedArray
         );
     }
-    /**
-     * 驗證 Advanced->with() 使用 array 修改值。
-     * 驗證巢狀 Basic 欄位也會被正確變更。
-     */
     public function testAdvancedByArrayWith()
     {
         $advanced = new Advanced($this->advancedDataByArray);
@@ -286,9 +278,6 @@ class defaultTest extends TestCase
             $modified->basic->object
         );
     }
-    /**
-     * 驗證 Advanced->with() 可接受巢狀 instance 修改並返回新實例。
-     */
     public function testAdvancedByInstanceWith()
     {
         $advanced = new Advanced($this->advancedDataByInstance);
@@ -320,9 +309,6 @@ class defaultTest extends TestCase
             $modified->basic->object
         );
     }
-    /**
-     * 驗證 Union 包含非內建型別 toArray() 與修改資料一致。
-     */
     public function testAdvancedByArrayWithUnionToNotBuiltin()
     {
         $basic = new Basic($this->basicData);
@@ -337,9 +323,6 @@ class defaultTest extends TestCase
             $modifiedArray
         );
     }
-    /**
-     * 驗證 Basic->with()->toArray() 與修改資料一致。
-     */
     public function testBasicWithToArray()
     {
         $basic = new Basic($this->basicData);
@@ -358,9 +341,6 @@ class defaultTest extends TestCase
             $modified->object
         );
     }
-    /**
-     * 驗證 Advanced->with()->toArray() 與修改資料一致。
-     */
     public function testAdvancedByArrayWithToArray()
     {
         $advanced = new Advanced($this->advancedDataByArray);
@@ -383,9 +363,6 @@ class defaultTest extends TestCase
             $modified->basic->object
         );
     }
-    /**
-     * 驗證 Advanced->with()->toArray() 與修改資料一致。
-     */
     public function testAdvancedByInstanceWithToArray()
     {
         $advanced = new Advanced($this->advancedDataByInstance);
@@ -417,9 +394,6 @@ class defaultTest extends TestCase
             $modified->basic->object
         );
     }
-    /**
-     * 驗證當子類含有已初始化的 readonly property 時，跳過並保留父類已初始化的值。
-     */
     public function testImmutableBaseSkipsInitializedReadonlyProperties()
     {
         $this->assertEquals(
@@ -438,9 +412,6 @@ class defaultTest extends TestCase
             )->toArray()
         );
     }
-    /**
-     * 驗證 Enum 型別可接受 key value 形式。
-     */
     public function testEnumAcceptable()
     {
         $basic_1 = new Basic(array_merge($this->basicData, ['enum' => 'one']));
@@ -449,124 +420,88 @@ class defaultTest extends TestCase
         $this->assertEquals(Enum::TWO, $basic_2->enum);
     }
 
-    /**
-     * 驗證非 nullable 欄位嘗試傳入 null 拋出 Exception。
-     */
+
+
     public function testWithBuiltinNotAllowsNullThrowException()
     {
         $basic = new Basic($this->basicData);
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('string 型別錯誤，期望：string，傳入：NULL');
+        $this->expectException(NonNullablePropertyException::class);
+        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic string value is required and must be string.');
         $basic->with(['string' => null]);
     }
-    /**
-     * 驗證非內建型別且非 nullable 欄位嘗試傳入 null 拋出 Exception。
-     */
     public function testWithNotBuiltinAndNotAllowsNullThrowException()
     {
         $basic = new Basic($this->basicData);
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('enum 型別錯誤，期望：Tests\Enum，傳入：NULL');
+        $this->expectException(NonNullablePropertyException::class);
+        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic enum value is required and must be Tests\Enum.');
         $basic->with(['enum' => null]);
     }
-    /**
-     * 驗證 union 欄位傳入不被允許的型別（例如 double）拋出 Exception。
-     */
     public function testValueTypeNotInUnionTypeThrowException()
     {
         $advanced = new Advanced($this->advancedDataByArray);
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('union 型別錯誤，期望：Tests\DataTransferObjects\Basic|string|int，傳入：double');
+        $this->expectException(InvalidTypeException::class);
+        $this->expectExceptionMessage('Tests\DataTransferObjects\Advanced union expected types: Tests\DataTransferObjects\Basic|string|int, got double.');
         $advanced->with(['union' => 1.1]);
     }
-    /**
-     * 驗證 union 不包含 array 時傳入 array 拋出 Exception。
-     */
     public function testArrayGivenButUnionTypeDoesNotIncludeThrowsException()
     {
         $advanced = new Advanced($this->advancedDataByArray);
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('型別為複合且不包含array，須傳入已實例化的物件。');
+        $this->expectException(InvalidTypeException::class);
+        $this->expectExceptionMessage('Tests\DataTransferObjects\Advanced union type is union and does not include array; an instantiated object is required.');
         $advanced->with(['union' => []]);
     }
-    /**
-     * 驗證 enum cases 不包含傳入值時拋出 Exception。
-     */
     public function testWithEnumNotInCasesThrowException()
     {
         $basic = new Basic($this->basicData);
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('enum THREE 不是 Tests\Enum 的期望值');
+        $this->expectException(InvalidTypeException::class);
+        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic enum is Tests\Enum and does not include \'THREE\'.');
         $basic->with(['enum' => 'THREE']);
     }
-    /**
-     * 驗證 ArrayOf attribute 未指定 class 拋出 Exception。
-     */
     public function testArrayOfEmptyThrowException()
     {
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('ArrayOf class 不能為空');
-        new #[DataTransferObject] class () extends ImmutableBase {
-            #[ArrayOf()]
-            public readonly array $arrayOf;
-        };
+        $this->expectException(InvalidArrayOfClassException::class);
+        $this->expectExceptionMessage('Tests\ExceptionObjects\ArrayOfEmptyClass arrayOf needs to specify a target class in its #[ArrayOf] attribute.');
+        new ArrayOfEmptyClass(['arrayOf' => [1]]);
     }
-    /**
-     * 驗證 ArrayOf 指定的 class 不存在或不是 ImmutableBase 的子類時拋出 Exception。
-     */
     public function testArrayOfClassShouldBeSubClassOfImmutableBaseThrowException()
     {
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('arrayOf ArrayOf 指定的 class 必須為 ImmutableBase 的子類');
-        new #[DataTransferObject] class () extends ImmutableBase {
-            #[ArrayOf('not_exist_class')]
-            public readonly array $arrayOf;
-        };
+        $this->expectException(InvalidArrayOfClassException::class);
+        $this->expectExceptionMessage('Tests\ExceptionObjects\ArrayOfNotExistsClass arrayOf must reference a class that extends ImmutableBase in its #[ArrayOf] attribute.');
+        new ArrayOfNotExistsClass(['arrayOf' => []]);
     }
-    /**
-     * 驗證子類未標註 DataTransferObject/ValueObject/Entity 時拋出 Exception。
-     */
     public function testShouldHaveAttributeThrowException()
     {
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('ImmutableBase 子類必須使用 DataTransferObject、ValueObject 或 Entity 任一標註');
+        $this->expectException(AttributeException::class);
+        $this->expectExceptionMessage('ImmutableBase subclasses must be annotated with either #[DataTransferObject] or #[ValueObject] or #[Entity].');
         new class () extends ImmutableBase {
         };
     }
-    /**
-     * 驗證 DataTransferObject property 不是 public readonly 時拋出 Exception。
-     */
     public function testPropertyShouldBePublicThrowException()
     {
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('string 必須為 public 且 readonly');
-        new #[DataTransferObject] class () extends ImmutableBase {
-            private readonly string $string;
-        };
+        $this->expectException(InvalidPropertyVisibilityException::class);
+        $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePublicButPrivate string must be declared public and readonly.');
+        new ShouldBePublicButPrivate();
     }
-    /**
-     * 驗證 ValueObject 屬性為 public 時拋出 Exception。
-     */
     public function testPropertyShouldNotBePublicThrowException()
     {
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage('string 不允許為 public');
-        new #[ValueObject] class () extends ImmutableBase {
-            public string $string;
-        };
+        $this->expectException(InvalidPropertyVisibilityException::class);
+        $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePrivateButPublic string must be declared private or protected');
+        new ShouldBePrivateButPublic();
     }
-
-    /**
-     * 驗證 Union 嘗試歷遍後無吻合型別拋出 Exception。
-     */
     public function testUnionTypesSkipTilCorrectThrowException()
     {
-        $this->expectException(Exception::class);
+        $this->expectException(InvalidTypeException::class);
         new Advanced(
             array_merge(
                 $this->modifyAdvancedDataByArray,
                 ['union' => 1.1]
             )
         );
+    }
+    public function testInvalidJsonStringForFromJsonException()
+    {
+        $this->expectException(InvalidJsonException::class);
+        $this->expectExceptionMessage('Invalid JSON string.');
+        BasicFromJson::fromJson('');
     }
 }
