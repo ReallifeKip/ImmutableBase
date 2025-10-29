@@ -1,6 +1,6 @@
 # ImmutableBase
 
-> 🌐 Available in other languages: [繁體中文](./README_TW.md)
+> 🌐 其他語言版本：[English](./README.md)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)
 ![PHP Version Support](https://img.shields.io/packagist/php-v/reallifekip/immutable-base.svg?style=flat-square)
@@ -22,24 +22,24 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/ReallifeKip/ImmutableBase/ci.yml?style=flat-square&logo=github&color=289e6d&label=CI)
 ![Downloads](https://img.shields.io/packagist/dt/reallifekip/immutable-base.svg?style=flat-square&color=289e6d&label=📦%20downloads&logoColor=white)
 
-An abstract base class designed for **immutable objects**, suitable for **DTOs (Data Transfer Objects)** and **VOs (Value Objects)** where data is initialized once and cannot be changed.
+一個專為 **不可變物件（Immutable Object）** 設計的抽象基底類別，適用於 **DTO（Data Transfer Object）**、**VO（Value Object）** 等需要「一次初始化、不可更改」的場景。
 
-Focuses on **immutability** and **type safety**, with APIs that make it easy to construct immutable objects.
+強調資料的**不可變性（Immutability）**、**類型安全（Type Safety）**，並可透過 API 快速建構不可變物件。
 
-## Overview
+## 說明
 
-1. Build objects via static constructors; ImmutableBase scans incoming keys/values and returns an instance.
-2. If a value’s type does not match the declared property type, an exception is thrown with detailed class/property info.
-3. Supports all PHP built-in types, Enums, instances, and union types.
-4. For properties typed as subclasses of ImmutableBase, arrays/objects matching the declared structure are automatically instantiated.
+1. 透過靜態建構函式建構物件，ImmutableBase 將掃描傳入參數的 key, value 進行建構並返回實例
+2. 進行傳入參數掃描時，若發現 value 與宣告屬性型別不符，將拋出包含物件/屬性名稱的詳細例外說明
+3. 型別接受所有 Builtin 類型、Enum、實例及 Union Type
+4. 若物件屬性宣告型別同為 ImmutableBase 的子類，允許傳入符合宣告結構的陣列、物件進行自動實例
 
-## Installation
+## 安裝
 
 ```bash
 composer require reallifekip/immutable-base
 ```
 
-## Example
+## 範例
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
@@ -66,23 +66,24 @@ $userList = UserListDTO::fromArray([
     ]
 ]);
 print_r($userList);
+
 ```
 
-## Testing
+## 測試
 
-### Unit tests
+### 單元測試
 
 ```bash
 vendor/bin/phpunit tests
 ```
 
-### Benchmarks
+### 效能測試
 
 ```bash
 vendor/bin/phpbench run
 ```
 
-## Object Types
+## 設計物件
 
 ### Data Transfer Object
 
@@ -108,9 +109,9 @@ final class Money extends ValueObject
 
 ## API
 
-### Constructing — `fromArray()`, `fromJson()`
+### 建構物件 - fromArray(), fromJson()
 
-> When scanning input, if a key is not a declared property of the class, it is ignored and will not exist on the resulting instance.
+> 傳入參數掃描時，若發現參數內容非物件宣告的屬性，該參數將被自動忽略而不會存在於返回的實例。
 
 ```php
 $user = User::fromArray([
@@ -123,40 +124,40 @@ $user = User::fromArray([
 $user = Money::fromJson('{"value": 1000}');
 ```
 
-### Updating — `with()`
+### 修改屬性 - with()
 
-> ⚠️ This does **not** mutate the original object. A new instance is returned with partial updates, by design. For the underlying rationale, see [Objects and references](https://www.php.net/manual/en/language.oop5.references.php).<br>
-> ⚠️ When `with()` targets a `#[ArrayOf]` property, the array is **rebuilt**.<br>
-> Keys that are not declared properties are ignored and will not appear on the new instance.
+> ⚠️ 注意：非修改原始物件，而是基於原始物件進行部分修改後返回 `新實例`，採用此設計的原因及底層原理請參考 [Objects and references](https://www.php.net/manual/en/language.oop5.references.php)。<br>
+> ⚠️ 注意：當 with() 指定修改 #[ArrayOf] 屬性時會直接重建陣列。<br>
+> 傳入參數掃描時，若發現參數內容非物件宣告的屬性，該參數將被自動忽略而不會存在於返回的實例。
 
 ```php
-// Update a scalar property
+// 基礎屬性更新
 $newUser = $user->with([
     'name' => 'someone'
 ]);
 
-// Partial update of a nested object
+// 嵌套物件部分更新
 $userWithNewAddress = $user->with([
     'profile' => [
-        'address' => 'Taipei City'
+        'address' => '台北市'
     ]
 ]);
 ```
 
-### Exporting — `toArray()`
+### 輸出陣列 - toArray()
 
 ```php
 // ['name' => 'Kip', 'age' => 18]
 $user->toArray();
 ```
 
-## Architecture: Attributes
+## 架構模式標註
 
-### `#[DataTransferObject]`
+### `#[DataTransferObject]` - 資料傳輸物件
 
-> ⚠️ Will be deprecated in **v4.0.0**. See [Architecture: Inheritance](#architecture-inheritance) for the new approach.
+> ⚠️ 即將於 v4.0.0 廢棄，新用法請參考 [架構模式繼承](#架構模式繼承)。
 
-All properties must be `public readonly`. Intended for cross-layer data transport.
+所有屬性必須為 `public readonly`，適用於跨層傳輸資料：
 
 ```php
 use ReallifeKip\ImmutableBase\DataTransferObject;
@@ -171,11 +172,11 @@ class UserDTO extends ImmutableBase
 }
 ```
 
-### `#[ValueObject]`
+### `#[ValueObject]` - 值物件
 
-> ⚠️ Will be deprecated in **v4.0.0**. See [Architecture: Inheritance](#architecture-inheritance).
+> ⚠️ 即將於 v4.0.0 廢棄，新用法請參考 [架構模式繼承](#架構模式繼承)。
 
-All properties must be `private`. Intended for value objects in DDD.
+所有屬性必須為 `private`，適用於領域驅動設計中的值物件：
 
 ```php
 use ReallifeKip\ImmutableBase\ValueObject;
@@ -199,11 +200,11 @@ class Money extends ImmutableBase
 }
 ```
 
-### `#[Entity]`
+### `#[Entity]` - 實體物件
 
-> ⚠️ Will be deprecated in **v4.0.0**. See [Architecture: Inheritance](#architecture-inheritance).
+> ⚠️ 即將於 v4.0.0 廢棄，新用法請參考 [架構模式繼承](#架構模式繼承)。
 
-All properties must be `private`. Intended for entities in DDD.
+所有屬性必須為 `private`，適用於領域驅動設計中的實體：
 
 ```php
 use ReallifeKip\ImmutableBase\Entity;
@@ -227,12 +228,13 @@ class User extends ImmutableBase
 }
 ```
 
-### `#[ArrayOf]` — Array auto-instantiation
+### `#[ArrayOf]` - 陣列自動實例化
 
-> ⚠️ When `with()` targets a `#[ArrayOf]` property, the array is **rebuilt**.
+> ⚠️ 注意：當 with() 指定修改 #[ArrayOf] 屬性時會直接重建陣列。
 
-Marks an array property as an **array of instances**. Incoming data for that array will be converted into instances of the specified class.
-Accepts `JSON strings`, `arrays`, or **already-instantiated objects** that match the required structure.
+指定陣列屬性為 `實例物件陣列` ，將傳入參數對應 `實例化物件陣列` 的內容全部轉換為指定類的實例，
+
+接受符合指定類所需結構的 `Json 字串`, `陣列`, `已實例的指定類`。
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
@@ -246,7 +248,7 @@ class UserListDTO extends DataTransferObject
 
 $userList = UserListDTO::fromArray([
     'users' => [
-        // All four forms are accepted
+        // 四種方法都接受
         ['name' => 'Alice', 'age' => 18],
         '{"name": "Bob", "age": 19}',
         UserDTO::fromArray(['name' => 'Carl', 'age' => 20]),
@@ -255,11 +257,11 @@ $userList = UserListDTO::fromArray([
 ]);
 ```
 
-## Architecture: Inheritance
+## 架構模式繼承
 
-### `DataTransferObject`
+### `DataTransferObject` - 資料傳輸物件
 
-All properties must be `public readonly`. Intended for cross-layer data transport.
+所有屬性必須為 `public readonly`，適用於跨層傳輸資料：
 
 ```php
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
@@ -272,9 +274,9 @@ class UserDTO extends DataTransferObject
 }
 ```
 
-### `ValueObject`
+### `ValueObject` - 值物件
 
-All properties must be `private readonly`. Intended for value objects in DDD.
+所有屬性必須為 `private readonly`，適用於領域驅動設計中的值物件：
 
 ```php
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
@@ -289,19 +291,19 @@ class Money extends ValueObject
 }
 ```
 
-## Notes
+## ⚠️ 注意事項
 
-1. **Property types** must be explicitly declared; `mixed` is not allowed.
-2. **Enums**: when a property is typed as an Enum, construction validates incoming data against the Enum’s cases/values and the resulting property is the **Enum instance**. Use `string` types if you want raw text values.
+1. **屬性型別**：必須宣告屬性型別，且不允許為 mixed，需明確宣告。
+2. **Enum**：屬性型別為 Enum 時，建構過程會檢查參數是否符合 case 或 value **並且返回 Enum**，若希望取得文字應使用 string。
 
-## License
+## 授權 License
 
-This package is released under the [MIT License](https://opensource.org/license/mit).
+本套件使用 [MIT License](https://opensource.org/license/mit)
 
-## Maintainer
+## 開發者資訊
 
-Developed and maintained by [Kip](mailto:bill402099@gmail.com). Suitable for implementing immutable DTOs/VOs in Laravel, DDD, and Hexagonal Architecture.
+由 [Kip](mailto:bill402099@gmail.com) 開發與維護，適用於 Laravel、DDD、Hexagonal Architecture 等架構中 Immutable DTO/VO 實作需求。
 
 ---
 
-Feedback and contributions are welcome — please open an Issue or submit a PR.
+如果有任何建議或發現錯誤，歡迎開 PR 或提出 Issue

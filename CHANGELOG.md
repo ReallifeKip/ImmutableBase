@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## [v3.1.0] - 2025-10-29
+
+###  ⚠️Note
+> Starting from this release, the CHANGELOG will be maintained in English only.<br>
+> 自本版本後僅提供英文版 CHANGELOG，不再提供中文版內容。
+
+### Added
+
+* Added `fromArray()` and `fromJson()` as new object construction entry points.
+  Direct instantiation via `new` is no longer recommended.
+* Added **Traditional Chinese documentation** `README_TW.md`, providing bilingual documentation and badges.
+* Added **class-based object APIs**: `ReallifeKip\ImmutableBase\Objects\{DataTransferObject, ValueObject, Entity}`, allowing direct inheritance via `extends`.
+* Added **Attributes namespace**: `ReallifeKip\ImmutableBase\Attributes\{DataTransferObject, ValueObject, Entity, ArrayOf}`.
+* Added a set of **granular exception classes** (main ones listed):
+  `ImmutableBaseException`, `RuntimeException`, `LogicException`,
+  `InvalidTypeException`, `InvalidJsonException`,
+  `InvalidArrayException`, `InvalidArrayItemException`, `InvalidArrayValueException`,
+  `InvalidArrayOfClassException`, `InvalidPropertyVisibilityException`,
+  `AttributeException`, `InheritanceException`, `NonNullablePropertyException`.
+* `with()` and `ArrayOf` now support automatic instantiation of array elements into specified classes.
+  They accept **JSON strings, plain arrays, or existing instances** as input.
+* Completed PHPDoc for the `toArrayOrValue()` core method.
+
+### Changed
+
+* Refactored and simplified parts of the core logic in `src/ImmutableBase.php`.
+* Extracted **Attributes** and **Objects** into separate namespaces to improve project structure and code readability.
+* `with()` now supports modifying nested properties that are themselves subclasses of `ImmutableBase`, without requiring re-instantiation.
+* Updated `composer.json` to include relevant keywords for better package discovery.
+
+### Deprecated
+
+* Direct instantiation (e.g., `new Example()`) **will be removed in v4.0.0**.
+  Please use `Example::fromArray()` or `Example::fromJson()` instead.
+* `#[DataTransferObject]`, `#[ValueObject]`, and `#[Entity]` **will be deprecated in v4.0.0**.
+  Use the **class-based API** (`Objects\*`) going forward.
+
+
 ## [v3.0.3] - 2025-10-17
 
 - 修復 PHP 8.2 取得反射屬性名稱失敗 bug
