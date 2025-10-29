@@ -24,10 +24,18 @@
     }
   ],
   "keywords": [
+    "php",
     "dto",
-    "data-transfer-object",
+    "toArray",
+    "utility",
+    "immutable",
+    "reflection",
+    "type-safety",
     "value-object",
-    "immutable"
+    "serialization",
+    "normalization",
+    "array-conversion",
+    "data-transfer-object"
   ],
   "require-dev": {
     "phpunit/phpunit": "^10",

@@ -463,6 +463,20 @@ abstract class ImmutableBase
         });
         return $properties;
     }
+    /**
+     * Converts an object to an array if possible, otherwise returns the original value.
+     *
+     * This method checks whether the given value is an object implementing a `toArray()` method.
+     * If so, it invokes that method and returns the resulting array. For all other values, the
+     * original input is returned unchanged.
+     *
+     * This utility provides a lightweight normalization step for mixed-type data, ensuring that
+     * objects capable of array conversion are consistently represented as arrays.
+     *
+     * @param mixed $value The value to be normalized or returned as-is.
+     *
+     * @return mixed The array representation of the object, or the original value if no conversion applies.
+     */
     private function toArrayOrValue(mixed $value)
     {
         if (is_object($value)) {

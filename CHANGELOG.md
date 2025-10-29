@@ -4,7 +4,16 @@ Here’s your English version of that changelog entry, keeping the same structur
 
 ---
 
-## [v3.1.0] - 2025-10-27
+## [v3.1.0-rc.2] - 2025-10-29
+
+### Added
+- Completed PHPDoc for the `toArrayOrValue()` core method.
+
+### Changed
+- Updated `composer.json` to include relevant keywords for better package discovery.
+
+
+## [v3.1.0-rc] - 2025-10-27
 
 ###  ⚠️Note
 > Starting from this release, the CHANGELOG will be maintained in English only.<br>
