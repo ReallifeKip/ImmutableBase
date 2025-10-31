@@ -466,9 +466,8 @@ abstract class ImmutableBase
     {
         $properties = [];
         $this->walkProperties(function (ReflectionProperty $property) use (&$properties) {
-            $type = $property->getType()->getName();
             $value = $property->getValue($this);
-            if (is_subclass_of($type, SingleValueObject::class)) {
+            if (is_object($value) && is_subclass_of($value::class, SingleValueObject::class)) {
                 $properties[$property->name] = $value();
             } else {
                 $properties[$property->name] = is_array($value) ?
@@ -610,6 +609,13 @@ abstract class ImmutableBase
             is_array($value) && is_subclass_of($class, self::class) => $class::fromArray($value),
             is_object($value) => $value,
             $this->validNullValue($type, $value) => null,
+            is_subclass_of($class, SingleValueObject::class) => (function () use ($class, $value) {
+                try {
+                    return $class::from($value);
+                } catch (\Exception $e) {
+                    throw new InvalidTypeException($e->getMessage());
+                }
+            })(),
             $this->isBuiltin($value) => $this->singleValueDecide($class, $value),
             default => throw new InvalidTypeException(
                 "expected types: $class, got " .

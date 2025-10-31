@@ -52,8 +52,7 @@ abstract class SingleValueObject extends ValueObject implements HasValidate
         if (!property_exists(static::class, 'value')) {
             throw new Exception('You have to defined the property "value"');
         };
-        $instance = new static($value);
-        return $instance->__validate($instance->ref);
+        return ($instance = new static($value))->__validate($instance->ref);
     }
     final public function equals(mixed $value)
     {
