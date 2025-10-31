@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [v3.2.0-alpha.1] - 2025-10-31
+
+* Added HasValidate interface defining the validate method.
+* Introduced abstract classes SingleValueObject, extending ValueObject and implementing HasValidate.
+* Changed the visibility of the constructInitialize method to final protected.
+* Enhanced walkProperties for better stability by ensuring reflection reinitializes when missing.
+* Added toJson method to support JSON encoding.
+
 ## [v3.1.0] - 2025-10-29
 
 ###  ⚠️Note

@@ -123,6 +123,18 @@ $user = User::fromArray([
 $user = Money::fromJson('{"value": 1000}');
 ```
 
+### Exporting — `toArray()`, `toJson()`
+
+```php
+// ['name' => 'Kip', 'age' => 18]
+$user->toArray();
+```
+
+```php
+// {"name":"Kip","age":18}
+$user->toJson();
+```
+
 ### Updating — `with()`
 
 > ⚠️ This does **not** mutate the original object. A new instance is returned with partial updates, by design. For the underlying rationale, see [Objects and references](https://www.php.net/manual/en/language.oop5.references.php).<br>
@@ -143,11 +155,25 @@ $userWithNewAddress = $user->with([
 ]);
 ```
 
-### Exporting — `toArray()`
+## API for SingleValueObject only
 
+### Constructing - `from()`
 ```php
-// ['name' => 'Kip', 'age' => 18]
-$user->toArray();
+$email = Gmail::from('bill402099@gmail.com');
+```
+
+### Comparing - `equals()`
+Compares the current object with another instance of the same class.
+If the provided value is not an instance of the same class, an exception will be thrown.
+This method returns true only when both objects contain an identical $value.
+```php
+$email2 = Gmail::from('bill402099@gmail.com');
+$email3 = Gmail::from('bill402099-2@gmail.com');
+$email4 = Hotmail::from('bill402099@gmail.com');
+
+$email->equals($email2); // true
+$email->equals($email3); // false
+$email->equals($email4); // Exception thrown
 ```
 
 ## Architecture: Attributes
@@ -288,6 +314,51 @@ class Money extends ValueObject
     }
 }
 ```
+
+### `SingleValueObject`
+
+Designed **exclusively for single-value inheritance** — do **not** extend it for multi-property value objects.
+Classes extending `SingleValueObject` are **required** to declare exactly one property:
+`private readonly {type} $value`.
+
+```php
+use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
+
+class Email extends SingleValueObject
+{
+    protected readonly string $value;
+    public function validate(): bool
+    {
+        return str_contains($this->value, '@');
+    }
+}
+
+class Gmail extends Email
+{
+    public function validate(): bool
+    {
+        return str_contains($this->value, 'gmail.com');
+    }
+}
+```
+
+> The `validate()` method defines validation rules automatically executed during initialization.
+> If the class hierarchy includes multiple levels of inheritance, all `validate()` methods in the chain will be called upward until every one passes before construction completes.
+
+### Output
+
+```php
+$email = Email::from('bill402099@gmail.com');
+
+// bill402099@gmail.com ⚠️ Works only if $value is a string
+echo $email;
+// bill402099@gmail.com
+echo $email();
+// bill402099@gmail.com
+echo $email->value;
+```
+
+All of the above expressions produce the same result.
 
 ## Notes
 

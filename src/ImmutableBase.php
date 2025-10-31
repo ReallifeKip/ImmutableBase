@@ -10,6 +10,8 @@ use ReflectionClass;
 use ReflectionProperty;
 use ReflectionNamedType;
 use ReflectionUnionType;
+use ReallifeKip\ImmutableBase\Objects\ValueObject;
+use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Exceptions\AttributeException;
 use ReallifeKip\ImmutableBase\Exceptions\InvalidJsonException;
 use ReallifeKip\ImmutableBase\Exceptions\InvalidTypeException;
@@ -292,7 +294,7 @@ abstract class ImmutableBase
      *
      * @throws AttributeException When the subclass does not extend any supported immutable base type.
      */
-    private function constructInitialize()
+    final protected function constructInitialize()
     {
         $attrNamespace = "$this->namespace\\Attributes";
         $this->ref ??= self::getReflection($this);
@@ -361,8 +363,15 @@ abstract class ImmutableBase
     private function walkProperties(callable $callback): void
     {
         $properties = [];
-        for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
-            array_unshift($properties, ...$c->getProperties());
+        if (!$this->ref) {
+            $this->ref = new ReflectionClass($this);
+        }
+        $c = $this->ref;
+        while ($c) {
+            if ($c->name !== self::class) {
+                array_unshift($properties, ...$c->getProperties());
+            }
+            $c = $c->getParentClass();
         }
         foreach ($properties as $p) {
             /** @var ReflectionProperty $p */
@@ -457,11 +466,21 @@ abstract class ImmutableBase
     {
         $properties = [];
         $this->walkProperties(function (ReflectionProperty $property) use (&$properties) {
-            $properties[$property->name] = is_array($value = $property->getValue($this)) ?
-                array_map([$this, 'toArrayOrValue'], $value) :
-                $this->toArrayOrValue($value);
+            $type = $property->getType()->getName();
+            $value = $property->getValue($this);
+            if (is_subclass_of($type, SingleValueObject::class)) {
+                $properties[$property->name] = $value();
+            } else {
+                $properties[$property->name] = is_array($value) ?
+                    array_map([$this, 'toArrayOrValue'], $value) :
+                    $this->toArrayOrValue($value);
+            }
         });
         return $properties;
+    }
+    final public function toJson()
+    {
+        return json_encode($this->toArray());
     }
     /**
      * Converts an object to an array if possible, otherwise returns the original value.
@@ -482,6 +501,10 @@ abstract class ImmutableBase
         if (is_object($value)) {
             if (method_exists($value, 'toArray')) {
                 return $value->toArray();
+            } elseif (property_exists($value, 'value')) {
+                return $value->value;
+            } elseif (property_exists($value, 'name')) {
+                return $value->name;
             }
         }
         return $value;
@@ -587,18 +610,26 @@ abstract class ImmutableBase
             is_array($value) && is_subclass_of($class, self::class) => $class::fromArray($value),
             is_object($value) => $value,
             $this->validNullValue($type, $value) => null,
-            is_string($value) && enum_exists($class) => (function () use ($class, $value) {
-                try {
-                    return $class::tryFrom($value) ?? constant("$class::$value");
-                } catch (Throwable) {
-                    throw new InvalidTypeException("is $class and does not include '$value'.");
-                }
-            })(),
+            $this->isBuiltin($value) => $this->singleValueDecide($class, $value),
             default => throw new InvalidTypeException(
                 "expected types: $class, got " .
                 (is_object($value) ? $value::class : gettype($value)) . '.'
             )
         };
+    }
+    private function singleValueDecide($class, $value)
+    {
+        if (enum_exists($class)) {
+            try {
+                return (is_subclass_of($class, \BackedEnum::class) && $case = $class::tryFrom($value)) ? $case : constant("$class::$value");
+            } catch (Throwable) {
+                throw new InvalidTypeException("is $class and does not include '$value'.");
+            }
+        } elseif (is_subclass_of($class, ValueObject::class)) {
+            if (is_subclass_of($class, SingleValueObject::class)) {
+                return $class::from($value);
+            }
+        }
     }
     /**
      * Determines whether the given value is a valid null according to the property's type definition.
@@ -631,5 +662,12 @@ abstract class ImmutableBase
             'object'            => is_object($value),
             default             => false,
         };
+    }
+    private function isBuiltin(mixed $value)
+    {
+        return in_array(gettype($value), [
+            'integer', 'double', 'string', 'boolean',
+            'array', 'object', 'resource', 'NULL'
+        ], true);
     }
 }

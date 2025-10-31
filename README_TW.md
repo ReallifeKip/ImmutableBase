@@ -109,7 +109,7 @@ final class Money extends ValueObject
 
 ## API
 
-### 建構物件 - fromArray(), fromJson()
+### 建構物件 - `fromArray()`, `fromJson()`
 
 > 傳入參數掃描時，若發現參數內容非物件宣告的屬性，該參數將被自動忽略而不會存在於返回的實例。
 
@@ -124,7 +124,19 @@ $user = User::fromArray([
 $user = Money::fromJson('{"value": 1000}');
 ```
 
-### 修改屬性 - with()
+### 輸出陣列 - `toArray()` , `toJson()`
+
+```php
+// ['name' => 'Kip', 'age' => 18]
+$user->toArray();
+```
+
+```php
+// {"name":"Kip","age":18}
+$user->toJson();
+```
+
+### 修改屬性 - `with()`
 
 > ⚠️ 注意：非修改原始物件，而是基於原始物件進行部分修改後返回 `新實例`，採用此設計的原因及底層原理請參考 [Objects and references](https://www.php.net/manual/en/language.oop5.references.php)。<br>
 > ⚠️ 注意：當 with() 指定修改 #[ArrayOf] 屬性時會直接重建陣列。<br>
@@ -144,11 +156,26 @@ $userWithNewAddress = $user->with([
 ]);
 ```
 
-### 輸出陣列 - toArray()
+## 僅適用於 SingleValueObject 的 API
+
+### 建構物件 - `from()`
 
 ```php
-// ['name' => 'Kip', 'age' => 18]
-$user->toArray();
+$email = Gmail::from('bill402099@gmail.com');
+```
+
+### 比較方法 - `equals()`
+
+比較當前物件與**相同類別**的另一個實例，若傳入的值不是相同類別的實例將會拋出例外，當兩個物件內部的 `$value` 值相同時，才會回傳 `true`。
+
+```php
+$email2 = Gmail::from('bill402099@gmail.com');
+$email3 = Gmail::from('bill402099-2@gmail.com');
+$email4 = Hotmail::from('bill402099@gmail.com');
+
+$email->equals($email2); // true
+$email->equals($email3); // false
+$email->equals($email4); // 拋出例外
 ```
 
 ## 架構模式標註
@@ -290,6 +317,51 @@ class Money extends ValueObject
     }
 }
 ```
+
+### `SingleValueObject`
+
+專為**單一值（single-value）繼承**而設計 —— **不要**在此基礎上建立多屬性的 Value Object。
+
+繼承 `SingleValueObject` 的類別**必須**宣告：`private readonly {type} $value`。
+
+```php
+use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
+
+class Email extends SingleValueObject
+{
+    protected readonly string $value;
+    public function validate(): bool
+    {
+        return str_contains($this->value, '@');
+    }
+}
+
+class Gmail extends Email
+{
+    public function validate(): bool
+    {
+        return str_contains($this->value, 'gmail.com');
+    }
+}
+```
+
+> `validate()` 方法用於定義驗證規則，會在初始化時自動執行。
+> 若類別存在多層繼承關係，所有父類與子類中的 `validate()` 都會依序被呼叫，直到全部驗證通過後，物件才會完成建構。
+
+### 輸出結果
+
+```php
+$email = Email::from('bill402099@gmail.com');
+
+// bill402099@gmail.com ⚠️ 透過 __toString() 包裝，僅 $value 宣告 type 為字串時可用
+echo $email;
+// bill402099@gmail.com
+echo $email();
+// bill402099@gmail.com
+echo $email->value;
+```
+
+以上幾種寫法的輸出結果都相同。
 
 ## ⚠️ 注意事項
 
