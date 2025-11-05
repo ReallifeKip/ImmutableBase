@@ -568,7 +568,9 @@ abstract class ImmutableBase
      * - If the value is an array and the target type extends {@see ImmutableBase}, a new instance is constructed.
      * - If the value is already an object, it is returned as-is.
      * - If the type allows null and the value is null, null is returned.
-     * - If the type represents an enum, the method attempts to resolve it via `::tryFrom()` or constant lookup.
+     * - If the type represents an enum, the method first attempts to resolve it by matching the case name
+     *   via constant lookup (e.g. `MyEnum::CASE`), and if that fails and the enum implements {@see BackedEnum},
+     *   it will attempt resolution via `::tryFrom($value)`.
      *
      * Any mismatch between the provided value and the expected class or enum type will result
      * in an {@see InvalidTypeException}.
@@ -588,11 +590,13 @@ abstract class ImmutableBase
             is_object($value) => $value,
             $this->validNullValue($type, $value) => null,
             is_string($value) && enum_exists($class) => (function () use ($class, $value) {
-                try {
-                    return $class::tryFrom($value) ?? constant("$class::$value");
-                } catch (Throwable) {
-                    throw new InvalidTypeException("is $class and does not include '$value'.");
+                if (defined($case = "$class::$value")) {
+                    return constant($case);
                 }
+                if (is_subclass_of($class, \BackedEnum::class) && $case = $class::tryFrom($value)) {
+                    return $case;
+                }
+                throw new InvalidTypeException("is $class and does not include '$value'.");
             })(),
             default => throw new InvalidTypeException(
                 "expected types: $class, got " .
