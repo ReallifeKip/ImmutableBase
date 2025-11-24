@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v3.1.2] - 2025-11-24
+
+### Fixed
+
+- Fixed a bug where Immutable Objects implementing a custom constructor skipped the normal initialization flow, causing toArray() to consistently throw errors. The initialization step is now guaranteed before property traversal, ensuring toArray() works correctly even with custom constructors.
+
 ## [v3.1.1] - 2025-11-05
 
 ### Fixed

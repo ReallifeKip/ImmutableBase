@@ -47,6 +47,7 @@ abstract class ImmutableBase
 {
     private int $mode;
     private string $namespace = __NAMESPACE__;
+    private bool $initialized = false;
     private static bool $byNamedConstruct = false;
     private ReflectionClass $ref;
     /** @var ReflectionClass[] $reflectionsCache */
@@ -361,6 +362,9 @@ abstract class ImmutableBase
     private function walkProperties(callable $callback): void
     {
         $properties = [];
+        if ($this->initialized === false) {
+            $this->constructInitialize();
+        }
         for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
             array_unshift($properties, ...$c->getProperties());
         }
