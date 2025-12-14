@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace ReallifeKip\ImmutableBase;
 
 use Closure;
-use Throwable;
 use ReflectionClass;
 use ReflectionProperty;
 use ReflectionNamedType;
 use ReflectionUnionType;
+use ReflectionAttribute;
+use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Exceptions\AttributeException;
 use ReallifeKip\ImmutableBase\Exceptions\InvalidJsonException;
 use ReallifeKip\ImmutableBase\Exceptions\InvalidTypeException;
@@ -45,10 +46,12 @@ class_alias(
 
 abstract class ImmutableBase
 {
-    private int $mode;
-    private string $namespace = __NAMESPACE__;
+    /** @var array<string, int> */
+    private static array $modes;
     private bool $initialized = false;
     private static bool $byNamedConstruct = false;
+    /** @var array<string, ReflectionProperty[]> */
+    private static array $classes = [];
     private ReflectionClass $ref;
     /** @var ReflectionClass[] $reflectionsCache */
     private static array $reflectionsCache = [];
@@ -56,8 +59,21 @@ abstract class ImmutableBase
     /**
      * Initializes an immutable object using the given data array.
      *
-     * @throws ImmutableBaseException When any internal error occurs within this package during execution.
-     * @deprecated This constructor will be deprecated in v4.0.0. Use static::fromArray() or static::fromJson() instead.
+     * This constructor performs full reflection-based hydration and validation
+     * of all declared properties according to their type definitions, attributes,
+     * and visibility rules.
+     *
+     * Direct instantiation via `new` is discouraged and will be deprecated in v4.0.0.
+     * Consumers should prefer {@see static::fromArray()} or {@see static::fromJson()},
+     * which provide clearer intent and allow future optimization or alternate
+     * construction strategies.
+     *
+     * @param array<string, mixed> $data The associative array used to populate the object's properties.
+     *
+     * @throws ImmutableBaseException When any internal validation or hydration error occurs.
+     *
+     * @deprecated Direct instantiation will be deprecated in v4.0.0.
+     *             Use static::fromArray() or static::fromJson() instead.
      */
     public function __construct(array $data = [])
     {
@@ -72,40 +88,63 @@ abstract class ImmutableBase
                 ),
                 E_USER_WARNING
             );
-            $func = is_array($data) ? 'fromArray' : 'fromJson';
-            $data = get_object_vars(static::$func($data));
         }
-        $this->walkProperties(function (ReflectionProperty $property) use ($data) {
-            try {
-                $name                = $property->name;
-                /** @var ReflectionNamedType|ReflectionUnionType $type */
-                $type               = $property->getType();
-                $exists             = array_key_exists($name, $data);
-                $isNull             = !isset($data[$name]) || $data[$name] === null;
-                $notExistsOrIsNull  = !$exists || $isNull;
-                $nullable           = $type->allowsNull();
-                $hasDefault         = $property->hasDefaultValue();
-                $arg                = $this->isArrayOf($property);
-                $this->propertyInitialize(
-                    $property,
-                    match(true) {
-                        $notExistsOrIsNull => match(true) {
-                            !$nullable  => throw new NonNullablePropertyException("value is required and must be $type."),
-                            $nullable   => $hasDefault ? $property->getDefaultValue() : null,
+        $this->walkProperties([$this, 'analyzeClass'], $data);
+    }
+    /**
+     * Analyzes and initializes a single property during object construction.
+     *
+     * This method is invoked for each declared property via {@see walkProperties()}.
+     * It determines the appropriate value to assign based on:
+     * - Property existence in the input data
+     * - Nullability and default values
+     * - Declared type (including union and named types)
+     * - Presence of the #[ArrayOf] attribute
+     *
+     * The resolved value is then assigned using {@see propertyInitialize()},
+     * which safely handles readonly properties across inheritance boundaries.
+     *
+     * Any validation or type mismatch errors are wrapped with contextual
+     * information (class and property name) before being rethrown.
+     *
+     * @param ReflectionProperty      $property The property being analyzed and initialized.
+     * @param array<string, mixed>    $data     The input data array used for hydration.
+     *
+     * @throws ImmutableBaseException When validation fails or the value cannot be assigned.
+     *
+     * @return void
+     */
+    private function analyzeClass(ReflectionProperty $property, array $data)
+    {
+        try {
+            $name               = $property->name;
+            /** @var ReflectionNamedType|ReflectionUnionType $type */
+            $type               = $property->getType();
+            $exists             = array_key_exists($name, $data);
+            $isNull             = !isset($data[$name]) || $data[$name] === null;
+            $notExistsOrIsNull  = !$exists || $isNull;
+            $nullable           = $type->allowsNull();
+            $hasDefault         = $property->hasDefaultValue();
+            $arg                = $this->isArrayOf($property);
+            $this->propertyInitialize(
+                $property,
+                match(true) {
+                    $notExistsOrIsNull => match(true) {
+                        !$nullable  => throw new NonNullablePropertyException("value is required and must be $type."),
+                        $nullable   => $hasDefault ? $property->getDefaultValue() : null,
+                    },
+                    $arg !== false   =>
+                        match(true) {
+                            $notExistsOrIsNull              => throw new InvalidArrayValueException("must be an array or array<{$arg}>."),
+                            is_array($data[$name])   => $this->arrayOfInitilize($arg, $data[$name]),
+                            default                         => throw new InvalidTypeException("must be an array."),
                         },
-                        $arg !== null   =>
-                            match(true) {
-                                $notExistsOrIsNull              => throw new InvalidArrayValueException("must be an array or array<{$arg}>."),
-                                is_array($data[$name])   => $this->arrayOfInitilize($arg, $data[$name]),
-                                default                         => throw new InvalidTypeException("must be an array."),
-                            },
-                        $exists         => $this->valueDecide($type, $data[$name]),
-                    }
-                );
-            } catch (ImmutableBaseException $e) {
-                throw new $e(static::class." $name {$e->getMessage()}");
-            }
-        });
+                    $exists         => $this->valueDecide($type, $data[$name]),
+                }
+            );
+        } catch (ImmutableBaseException $e) {
+            throw new $e(static::class." $name {$e->getMessage()}");
+        }
     }
     /**
      * Determines whether a property is annotated with the #[ArrayOf] attribute and validates its target class.
@@ -122,15 +161,13 @@ abstract class ImmutableBase
      *
      * @throws InvalidArrayOfClassException When the #[ArrayOf] attribute is misconfigured or targets an invalid class.
      *
-     * @return class-string<ImmutableBase>|null The fully qualified class name referenced in the #[ArrayOf] attribute,
-     * or null if the property is not annotated with #[ArrayOf].
+     * @return class-string<ImmutableBase>|false The fully qualified class name referenced in the #[ArrayOf] attribute,
+     * or false if the property is not annotated with #[ArrayOf].
      */
     private function isArrayOf(ReflectionProperty $property)
     {
         if (
-            $arrayOf =
-                $property->getAttributes("$this->namespace\\ArrayOf") ?:
-                $property->getAttributes("$this->namespace\\Attributes\\ArrayOf")
+            $arrayOf = $property->getAttributes(ArrayOf::class, ReflectionAttribute::IS_INSTANCEOF)
         ) {
             if ($arrayOf[0]->newInstance()->error) {
                 throw new InvalidArrayOfClassException('needs to specify a target class in its #[ArrayOf] attribute.');
@@ -140,7 +177,7 @@ abstract class ImmutableBase
                 throw new InvalidArrayOfClassException('must reference a class that extends ImmutableBase in its #[ArrayOf] attribute.');
             }
         }
-        return $arg ?? null;
+        return $arg ?? false;
     }
     /**
      * Initializes an array of immutable objects based on the specified target class.
@@ -162,13 +199,15 @@ abstract class ImmutableBase
      *
      * @return array<int, ImmutableBase> An array of initialized immutable objects of the specified type.
      */
-    private function arrayOfInitilize($arg, $value)
+    private function arrayOfInitilize(string $arg, mixed $value)
     {
-        return array_map(fn ($item) => match(true) {
-            $item instanceof $arg      => $item,
-            is_array($item)     => $arg::fromArray($item),
-            is_string($item)    => $arg::fromArray($this->jsonParser($item)),
-            default => throw new InvalidArrayItemException("each element in the array must be either an instance of {$arg}, an associative array, or a valid JSON string representing one.")
+        return array_map(function ($item) use ($arg) {
+            return match(true) {
+                $item instanceof $arg      => $item,
+                is_array($item)     => $arg::fromArray($item),
+                is_string($item)    => $arg::fromArray($this->jsonParser($item)),
+                default => throw new InvalidArrayItemException("each element in the array must be either an instance of {$arg}, an associative array, or a valid JSON string representing one.")
+            };
         }, $value);
     }
     /**
@@ -295,18 +334,22 @@ abstract class ImmutableBase
      */
     private function constructInitialize()
     {
-        $attrNamespace = "$this->namespace\\Attributes";
+        if ($this->initialized) {
+            return;
+        }
+        $namespace = __NAMESPACE__;
+        $attrNamespace = "$namespace\\Attributes";
         $this->ref ??= self::getReflection($this);
         foreach ($this->ref->getAttributes() as $attr) {
             $set[$attr->name ?? $attr->getName()] = true;
         }
-        $this->mode ??= match (true) {
-            isset($set["$this->namespace\\DataTransferObject"]) || isset($set["$attrNamespace\\DataTransferObject"])    => 1,
-            is_subclass_of(static::class, "$this->namespace\\Objects\\DataTransferObject")      => 1,
-            isset($set["$this->namespace\\ValueObject"]) || isset($set["$attrNamespace\\ValueObject"])                  => 2,
-            is_subclass_of(static::class, "$this->namespace\\Objects\\ValueObject")             => 2,
-            isset($set["$this->namespace\\Entity"]) || isset($set["$attrNamespace\\Entity"])                            => 3,
-            is_subclass_of(static::class, "$this->namespace\\Objects\\Entity")                  => 3,
+        self::$modes[static::class] ??= match (true) {
+            isset($set["$namespace\\DataTransferObject"]) || isset($set["$attrNamespace\\DataTransferObject"])    => 1,
+            is_subclass_of(static::class, "$namespace\\Objects\\DataTransferObject")      => 1,
+            isset($set["$namespace\\ValueObject"]) || isset($set["$attrNamespace\\ValueObject"])                  => 2,
+            is_subclass_of(static::class, "$namespace\\Objects\\ValueObject")             => 2,
+            isset($set["$namespace\\Entity"]) || isset($set["$attrNamespace\\Entity"])                            => 3,
+            is_subclass_of(static::class, "$namespace\\Objects\\Entity")                  => 3,
             default => throw new AttributeException('ImmutableBase subclasses must be annotated with either #[DataTransferObject] or #[ValueObject] or #[Entity].'),
         };
     }
@@ -344,48 +387,85 @@ abstract class ImmutableBase
         return self::$reflectionsCache[static::class] ??= new ReflectionClass($obj);
     }
     /**
-     * Iterates through all declared properties of the current class hierarchy
-     * (excluding ImmutableBase itself) and applies a callback function to each.
+     * Iterates through all declared properties in the current class hierarchy
+     * (excluding {@see ImmutableBase}) and applies a callback to each.
      *
-     * This method enforces visibility and mutability rules depending on the object's mode:
-     * - DataTransferObject (mode 1): properties must be declared as `public readonly`
+     * On first invocation per concrete class, this method:
+     * - Collects all properties from the inheritance chain (child → parent)
+     * - Caches the resulting property list for reuse
+     * - Validates each property's visibility and readonly constraints according
+     *   to the resolved object mode
+     *
+     * Subsequent invocations reuse the cached property list and skip validation,
+     * ensuring minimal overhead during repeated hydration or serialization passes.
+     *
+     * Visibility rules enforced by mode:
+     * - DataTransferObject (mode 1): properties must be declared `public readonly`
      * - ValueObject / Entity (other modes): properties must not be `public`
      *
-     * The provided callback is executed for each property after validation.
+     * The provided callback is executed for each property after validation,
+     * receiving the {@see ReflectionProperty} instance and the associated data array.
      *
-     * @param callable $callback The function to execute for each valid property. Receives a single parameter: \ReflectionProperty $property.
+     * @param callable               $callback The function to execute for each property.
+     *                                         Signature: fn(ReflectionProperty $property, array &$data): void
+     * @param array<string, mixed>   $data     The data array passed through the iteration process.
      *
-     * @throws InvalidPropertyVisibilityException When a property's visibility or readonly status violates the rules for the current object mode.
+     * @throws InvalidPropertyVisibilityException
+     *         When a property's visibility or readonly status violates the rules
+     *         for the current object mode.
      *
      * @return void
      */
-    private function walkProperties(callable $callback): void
+    private function walkProperties(callable $callback, array &$data): void
     {
-        $properties = [];
-        if ($this->initialized === false) {
-            $this->constructInitialize();
+        $this->constructInitialize();
+        $new = false;
+        $static = static::class;
+        if (isset(self::$classes[$static]) === false) {
+            $new = true;
+            $this->buildPropertyInheritanceChain($static);
         }
-        for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
-            array_unshift($properties, ...$c->getProperties());
-        }
-        foreach ($properties as $p) {
-            /** @var ReflectionProperty $p */
-            $isPublic = $p->isPublic();
-            $propertyName =  $p->name;
-            $className = $p->class;
-            if ($this->mode === 1) {
-                if (!$isPublic || !$p->isReadOnly()) {
-                    throw new InvalidPropertyVisibilityException("$className $propertyName must be declared public and readonly.");
-                }
-            } else {
-                if ($isPublic) {
+        foreach (self::$classes[$static] as $property) {
+            if ($new) {
+                $propertyName   = $property->name;
+                $className      = $property->class;
+                $isPublic       = $property->isPublic();
+                $isReadonly     = $property->isReadOnly();
+                if (self::$modes[static::class] === 1) {
+                    if (!$isPublic || !$isReadonly) {
+                        throw new InvalidPropertyVisibilityException("$className $propertyName must be declared public and readonly.");
+                    }
+                } elseif ($isPublic) {
                     throw new InvalidPropertyVisibilityException("$className $propertyName must be declared private or protected.");
-                } elseif (!$p->isReadOnly()) {
+                } elseif (!$isReadonly) {
                     trigger_error("$className $propertyName is not readonly. This will be required in version 4.0.0 (should be declared private or protected and readonly)");
                 }
             }
-            $callback($p);
+            $callback($property, $data);
         }
+    }
+    /**
+     * Builds and caches the ordered property inheritance chain for a concrete class.
+     *
+     * This method traverses the reflection class hierarchy starting from the
+     * concrete class and walking upward through parent classes, stopping before
+     * {@see ImmutableBase}. All declared properties are collected in parent-to-child
+     * order to ensure deterministic processing during hydration and serialization.
+     *
+     * The resulting {@see ReflectionProperty} list is cached per concrete class
+     * to avoid repeated reflection and traversal costs on subsequent access.
+     *
+     * @param class-string $static The concrete class name used as the cache key.
+     *
+     * @return void
+     */
+    private function buildPropertyInheritanceChain($static)
+    {
+        $properties = [];
+        for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
+            array_unshift($properties, ...$c->getProperties());
+        }
+        self::$classes[$static] = $properties;
     }
 
     /**
@@ -396,52 +476,71 @@ abstract class ImmutableBase
      */
     final public function with(mixed $data): static
     {
-        if (is_string($data)) {
-            $data = self::jsonParser($data, false);
-        }
+        $data = is_string($data) ? self::jsonParser($data, false) : $data;
         $ref = self::getReflection($this);
         $new = [];
-        foreach ($ref->getProperties() as $property) {
-            $name    = $property->name;
-            $current = $property->getValue($this);
-            $exists  = false;
-            $v       = null;
-            if (is_array($data) && $exists = array_key_exists($name, $data)) {
-                $v = $data[$name];
-            } elseif (is_object($data) && $exists = property_exists($data, $name)) {
-                $v = $data->$name;
+        try {
+            foreach ($ref->getProperties() as $property) {
+                $name = $property->name;
+                [$exists, $value] = $this->extractValue($data, $name);
+                $new[$name] = $exists
+                    ? $this->resolveValue($property, $value)
+                    : $property->getValue($this);
             }
-            if (!$exists) {
-                $new[$name] = $current;
-                continue;
-            }
-            try {
-                /** @var ReflectionNamedType|ReflectionUnionType $type */
-                $type = $property->getType();
-                if ($v === null) {
-                    if (!$type->allowsNull()) {
-                        throw new NonNullablePropertyException("value is required and must be $type.");
-                    }
-                    $new[$name] = null;
-                    continue;
-                }
-                if (is_array($v) && is_object($current) && is_subclass_of($current, self::class)) {
-                    $new[$name] = $current->with($v);
-                    continue;
-                }
-                if (($arg = $this->isArrayOf($property)) && is_array($v)) {
-                    $new[$name] = $this->arrayOfInitilize($arg, $v);
-                    continue;
-                }
-                if (is_string($v) && is_array($parsed = self::jsonParser($v, true))) {
-                    $v = $parsed;
-                }
-                $new[$name] = $this->valueDecide($type, $v);
-            } catch (ImmutableBaseException $e) {
-                throw new $e(static::class . " $name {$e->getMessage()}");
-            }
+        } catch (ImmutableBaseException $e) {
+            throw new $e(static::class . " $name {$e->getMessage()}");
         }
+
         return static::fromArray($new);
+    }
+    /**
+     * Extract a value by property name from array|object input.
+     *
+     * @param mixed  $data Source data (array|object expected, others ignored)
+     * @param string $name Property name to lookup
+     * @return array{0: bool, 1: mixed} [exists, value]
+     */
+    private function extractValue(mixed $data, string $name): array
+    {
+        return match (true) {
+            is_array($data)  && array_key_exists($name, $data)   => [true, $data[$name]],
+            is_object($data) && property_exists($data, $name)    => [true, $data->$name],
+            default => [false, null],
+        };
+    }
+    /**
+     * Resolve the final value for a property according to its type and rules.
+     *
+     * Handles:
+     * - non-nullable validation
+     * - nested immutable objects
+     * - array-of initialization
+     * - JSON string auto-parsing
+     * - final type coercion via valueDecide()
+     *
+     * @param ReflectionProperty $property Target property metadata
+     * @param mixed              $v        Incoming value
+     * @return mixed
+     * @throws ImmutableBaseException
+     */
+    private function resolveValue(ReflectionProperty $property, mixed $v): mixed
+    {
+        $type    = $property->getType();
+        $current = $property->getValue($this);
+        if ($v === null) {
+            $type->allowsNull() || throw new NonNullablePropertyException("value is required and must be $type.");
+            return null;
+        }
+        return match (true) {
+            is_array($v) && is_object($current) && is_subclass_of($current, self::class)
+                => $current->with($v),
+            ($arg = $this->isArrayOf($property)) && is_array($v)
+                => $this->arrayOfInitilize($arg, $v),
+            is_string($v) && is_array($parsed = self::jsonParser($v, true))
+                => $this->valueDecide($type, $parsed),
+            default
+            => $this->valueDecide($type, $v),
+        };
     }
 
     /**
@@ -460,12 +559,30 @@ abstract class ImmutableBase
     final public function toArray(): array
     {
         $properties = [];
-        $this->walkProperties(function (ReflectionProperty $property) use (&$properties) {
-            $properties[$property->name] = is_array($value = $property->getValue($this)) ?
-                array_map([$this, 'toArrayOrValue'], $value) :
-                $this->toArrayOrValue($value);
-        });
+        $this->walkProperties([$this, 'analyzeClassForToArray'], $properties);
         return $properties;
+    }
+    /**
+     * Collects a property's value into the resulting array representation.
+     *
+     * This method is used as a callback by {@see walkProperties()} during
+     * {@see toArray()} execution. For each property:
+     * - If the value is an array, each element is normalized via {@see toArrayOrValue()}
+     * - Otherwise, the value is normalized directly
+     *
+     * Objects implementing a `toArray()` method are recursively converted,
+     * while all other values are returned as-is.
+     *
+     * @param ReflectionProperty $property   The property being converted.
+     * @param array<string, mixed> &$properties The accumulating array representation.
+     *
+     * @return void
+     */
+    private function analyzeClassForToArray(ReflectionProperty $property, array &$properties)
+    {
+        $properties[$property->name] = is_array($value = $property->getValue($this)) ?
+            array_map([$this, 'toArrayOrValue'], $value) :
+            $this->toArrayOrValue($value);
     }
     /**
      * Converts an object to an array if possible, otherwise returns the original value.
@@ -483,10 +600,8 @@ abstract class ImmutableBase
      */
     private function toArrayOrValue(mixed $value)
     {
-        if (is_object($value)) {
-            if (method_exists($value, 'toArray')) {
-                return $value->toArray();
-            }
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            return $value->toArray();
         }
         return $value;
     }
@@ -593,20 +708,43 @@ abstract class ImmutableBase
             is_array($value) && is_subclass_of($class, self::class) => $class::fromArray($value),
             is_object($value) => $value,
             $this->validNullValue($type, $value) => null,
-            is_string($value) && enum_exists($class) => (function () use ($class, $value) {
-                if (defined($case = "$class::$value")) {
-                    return constant($case);
-                }
-                if (is_subclass_of($class, \BackedEnum::class) && $case = $class::tryFrom($value)) {
-                    return $case;
-                }
-                throw new InvalidTypeException("is $class and does not include '$value'.");
-            })(),
+            is_string($value) && enum_exists($class) => $this->analyzeEnum($class, $value),
             default => throw new InvalidTypeException(
                 "expected types: $class, got " .
                 (is_object($value) ? $value::class : gettype($value)) . '.'
             )
         };
+    }
+    /**
+     * Resolves and validates a value against a declared enum type.
+     *
+     * This method attempts to map the provided string value to a valid enum case
+     * using the following resolution strategy:
+     * - First, it checks for a matching enum case name via constant lookup
+     *   (e.g. `MyEnum::CASE_NAME`).
+     * - If no matching case name is found and the enum implements {@see BackedEnum},
+     *   it attempts to resolve the value using {@see BackedEnum::tryFrom()}.
+     *
+     * If neither strategy results in a valid enum case, an {@see InvalidTypeException}
+     * is thrown to indicate that the value does not correspond to any case
+     * of the declared enum type.
+     *
+     * @param string $class The fully qualified enum class name.
+     * @param string $value The raw value to resolve into an enum case.
+     *
+     * @throws InvalidTypeException When the value cannot be resolved to any enum case.
+     *
+     * @return object The resolved enum case instance.
+     */
+    private function analyzeEnum(string $class, string $value)
+    {
+        if (defined($case = "$class::$value")) {
+            return constant($case);
+        }
+        if (is_subclass_of($class, \BackedEnum::class) && $case = $class::tryFrom($value)) {
+            return $case;
+        }
+        throw new InvalidTypeException("is $class and does not include '$value'.");
     }
     /**
      * Determines whether the given value is a valid null according to the property's type definition.

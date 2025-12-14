@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [v3.1.3] - 2025-12-14
+
+### Changed
+
+- Refactored core logic in `src/ImmutableBase.php` to introduce static caching for reflection properties and modes, enhancing performance for repeated operations.
+- Optimized `walkProperties()` method to cache property lists per class, significantly reducing reflection overhead on subsequent calls.
+- Enhanced property initialization by extracting logic into dedicated `analyzeClass()` method for better code organization and maintainability.
+- Improved `toArray()` implementation with new `analyzeClassForToArray()` callback method, providing cleaner separation of concerns.
+- Updated enum resolution with dedicated `analyzeEnum()` method, improving readability and error handling for enum value assignments.
+- Enhanced PHPDoc documentation and method descriptions throughout `ImmutableBase.php` for better developer experience and API clarity.
+
 ## [v3.1.2] - 2025-11-24
 
 ### Fixed
