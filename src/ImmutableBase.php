@@ -333,7 +333,7 @@ abstract class ImmutableBase
      *
      * @throws AttributeException When the subclass does not extend any supported immutable base type.
      */
-    private function constructInitialize()
+    final protected function constructInitialize()
     {
         if ($this->initialized) {
             return;
@@ -345,6 +345,8 @@ abstract class ImmutableBase
             $set[$attr->name ?? $attr->getName()] = true;
         }
         self::$modes[static::class] ??= match (true) {
+            is_subclass_of(static::class, "$namespace\\Objects\\SingleValueObject")       => 4,
+            $this instanceof SingleValueObject                     => 4,
             isset($set["$namespace\\DataTransferObject"]) || isset($set["$attrNamespace\\DataTransferObject"])    => 1,
             is_subclass_of(static::class, "$namespace\\Objects\\DataTransferObject")      => 1,
             isset($set["$namespace\\ValueObject"]) || isset($set["$attrNamespace\\ValueObject"])                  => 2,
@@ -383,6 +385,7 @@ abstract class ImmutableBase
             $property->setValue($this, $value);
         }
     }
+    // TODO: 好像可以更優化
     private static function getReflection(object $obj): ReflectionClass
     {
         return self::$reflectionsCache[static::class] ??= new ReflectionClass($obj);
@@ -432,13 +435,11 @@ abstract class ImmutableBase
                 $className      = $property->class;
                 $isPublic       = $property->isPublic();
                 $isReadonly     = $property->isReadOnly();
-                if (self::$modes[static::class] === 1) {
-                    if (!$isPublic || !$isReadonly) {
-                        throw new InvalidPropertyVisibilityException("$className $propertyName must be declared public and readonly.");
-                    }
-                } elseif ($isPublic) {
-                    throw new InvalidPropertyVisibilityException("$className $propertyName must be declared private or protected.");
-                } elseif (!$isReadonly) {
+                $mode           = self::$modes[$static];
+                if ($mode === 1 && !$isPublic) {
+                    throw new InvalidPropertyVisibilityException("$className $propertyName must be declared public and readonly.");
+                }
+                if (!$isReadonly) {
                     trigger_error("$className $propertyName is not readonly. This will be required in version 4.0.0 (should be declared private or protected and readonly)");
                 }
             }
@@ -464,7 +465,11 @@ abstract class ImmutableBase
     {
         $properties = [];
         for ($c = $this->ref; $c && $c->name !== self::class; $c = $c->getParentClass()) {
-            array_unshift($properties, ...$c->getProperties());
+            foreach ($c->getProperties() as $property) {
+                if (!$property->isStatic()) {
+                    $properties[] = $property;
+                }
+            }
         }
         self::$classes[$static] = $properties;
     }
@@ -584,6 +589,10 @@ abstract class ImmutableBase
         $properties[$property->name] = is_array($value = $property->getValue($this)) ?
             array_map([$this, 'toArrayOrValue'], $value) :
             $this->toArrayOrValue($value);
+    }
+    final public function toJson()
+    {
+        return json_encode($this->toArray());
     }
     /**
      * Converts an object to an array if possible, otherwise returns the original value.

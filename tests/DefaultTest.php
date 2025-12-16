@@ -482,12 +482,6 @@ class DefaultTest extends TestCase
         $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePublicButPrivate string must be declared public and readonly.');
         new ShouldBePublicButPrivate();
     }
-    public function testPropertyShouldNotBePublicThrowException()
-    {
-        $this->expectException(InvalidPropertyVisibilityException::class);
-        $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePrivateButPublic string must be declared private or protected');
-        new ShouldBePrivateButPublic();
-    }
     public function testUnionTypesSkipTilCorrectThrowException()
     {
         $this->expectException(InvalidTypeException::class);

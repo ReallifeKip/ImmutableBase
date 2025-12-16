@@ -2,7 +2,7 @@
 
 namespace ReallifeKip\ImmutableBase\Interfaces;
 
-interface HasValidate
+interface HasValidation
 {
     public function validate(): bool;
 }
