@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## [v4.0.0] - 2026-02-23
+
+### ⚠️ Breaking Changes
+
+- Raised the minimum supported PHP version to **8.4**.
+- Removed the legacy mode attributes `#[DataTransferObject]`, `#[ValueObject]`, and `#[Entity]`; class behavior is now defined by extending object base classes directly.
+- Removed the `Entity` base class from `Objects\*` APIs.
+- Reworked the exception structure into domain-specific trees (`Definition*`, `Initialization*`, `Validation*`) and removed several legacy exception classes.
+
+### Added
+
+- Added new behavior attributes: `#[Strict]`, `#[Lax]`, `#[SkipOnNull]`, `#[KeepOnNull]`, `#[ValidateFromSelf]`, and `#[Spec]`.
+- Added a dedicated `Interfaces\SingleValueObject` contract and expanded `Objects\SingleValueObject` helpers (including single-value conversion and serialization ergonomics).
+- Added CLI toolchains:
+  - `cacher` for metadata cache generation.
+  - `writer` with Markdown and Mermaid outputs for object-structure documentation.
+- Added new benchmark suites and fixtures to cover nested DTOs, wide payload scenarios, VO/SVO usage, and enum-heavy paths.
+- Added extensive attack/edge-case test scenarios (deep nesting, forbidden types, enum boundaries, nullable array-of behavior, and null-output controls).
+
+### Changed
+
+- Refactored core metadata/runtime management in `ImmutableBase` with centralized static status and richer typed metadata definitions.
+- Strengthened type-resolution and object-construction validation flows, especially around `ArrayOf`, enum conversion, and nested immutable object mutation by path.
+- Updated CI/test layout and project documentation to reflect the new 4.x object model and validation semantics.
+
 ## [v3.1.3] - 2025-12-14
 
 ### Changed
