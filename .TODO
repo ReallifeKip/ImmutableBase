@@ -1,0 +1,26 @@
+; 🔴FIXME
+
+; 🟡TODO
+; TODO: validate() 允許拋出 Exception
+; TODO: arrayOf 支援 DTO, VO, SVO, Enum？
+; TODO: 自動使用 loadCache
+
+; TODO: ImmutableBase 改為 trait，提供給 ValueObject, DataTransferObject use，以避免被直接繼承
+; Question: 改為 trait 還不是一樣會被直接使用？這樣改真的有意義？
+
+; 🟢DONE
+; TODO: 把 with 和 __construct 結合在一起，用以統一處理 Exception
+; TODO: 最低支援版本改為 8.4
+; TODO: 開放 private/protected 屬性？ // ❌ 不開放，可能會導致用戶錯用 toArray/toJson，又或者需要寫大量的 getter
+; TODO: 爬樹不需要爬基底 abstract classes，浪費效能 // ❌ 冷啟動已夠快，且已有靜態快取，省略的效益不大，反而會增加複雜度
+; TODO: 嚴格模式 - 用以拒絕多餘傳入
+; TODO: 除錯模式 - 用以紀錄多餘傳入
+; TODO: 允許控制「是否自動補 null」
+; TODO: #[SkipOnNull] 提供 toArray, toJson 時過濾掉 null 屬性，可附加在 Class/Property 上
+; TODO: #[KeepOnNull] 提供 toArray, toJson 過濾掉 null 屬性時，強制保留特定屬性輸出 null，僅可附加在 Property 上
+
+; FIXME: 約束"所有函式"不得被"非IB, DTO, VO, SVO"的物件覆寫
+; FIXME: function 被 PHP 視為 Closure object，應排除（is_callable）
+; FIXME: 約束"靜態建構子"必須返回自身
+; FIXME: ArrayOf 不允許被指定到非 array property 上
+; FIXME: UnionSVO 未通過順序優先者 validation，會導致停止嘗試後半部 SVO

@@ -1,5 +1,9 @@
+index.php
+cache.php
 vendor/*
+docs/*
 coverage/*
 coverage.xml
 composer.lock
 .phpunit.result.cache
+ImmutableBaseLogDebug.log
