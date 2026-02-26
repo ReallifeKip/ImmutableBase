@@ -1,5 +1,13 @@
-vendor/*
-coverage/*
+.TODO
+index.php
+ib-cache.php
 coverage.xml
 composer.lock
 .phpunit.result.cache
+ImmutableBaseLogDebug.log
+
+docs/*
+vendor/*
+coverage/*
+
+**/**/ImmutableBaseDebugLog.log

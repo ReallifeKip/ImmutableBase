@@ -2,506 +2,385 @@
 
 namespace Tests;
 
-use Tests\Enum;
+use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
-use Tests\DataTransferObjects\Basic;
-use Tests\DataTransferObjects\Advanced;
-use Tests\DataTransferObjects\Initialized;
+use ReallifeKip\ImmutableBase\CLI\Cacher;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidWithPathException;
+use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidEnumValueException;
+use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidJsonException;
+use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueException;
+use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
+use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use Tests\DataTransferObjects\BasicFromJson;
-use Tests\ExceptionObjects\ArrayOfEmptyClass;
-use ReallifeKip\ImmutableBase\DataTransferObject;
-use Tests\ExceptionObjects\ArrayOfNotExistsClass;
-use Tests\ExceptionObjects\ShouldBePrivateButPublic;
-use Tests\ExceptionObjects\ShouldBePublicButPrivate;
-use ReallifeKip\ImmutableBase\Exceptions\AttributeException;
-use ReallifeKip\ImmutableBase\Exceptions\InvalidTypeException;
-use ReallifeKip\ImmutableBase\Exceptions\InvalidJsonException;
-use ReallifeKip\ImmutableBase\Exceptions\InvalidArrayOfClassException;
-use ReallifeKip\ImmutableBase\Exceptions\NonNullablePropertyException;
-use ReallifeKip\ImmutableBase\Exceptions\InvalidPropertyVisibilityException;
+use ReallifeKip\ImmutableBase\StaticStatus;
+use Tests\DataTransferObjects\DTO;
+use Tests\DataTransferObjects\EmptyArrayOfClassDTO;
+use Tests\DataTransferObjects\ExtraDTO;
+use Tests\DataTransferObjects\InvalidArrayOfClassDTO;
+use Tests\DataTransferObjects\InvalidArrayOfUsageDTO;
+use Tests\DataTransferObjects\LaxDTO;
+use Tests\DataTransferObjects\PrivatePropertyDTO;
+use Tests\DataTransferObjects\ProtectedPropertyDTO;
+use Tests\DataTransferObjects\SkipOnNullDTO;
+use Tests\DataTransferObjects\StrictDTO;
+use Tests\SingleValueObjects\SVO3;
+use Tests\SingleValueObjects\SVO;
+use Tests\TestObjects\Enum;
+use Tests\ValueObjects\VO;
+
+ImmutableBase::loadCache();
 
 class DefaultTest extends TestCase
 {
-    private array $nullableData;
-    private array $basicData;
-    private array $advancedDataByArray;
-    private array $advancedDataByInstance;
-    private array $modifyBasicData;
-    private array $modifyAdvancedDataByArray;
-    private array $modifyAdvancedDataByInstance;
+    private array $array;
+    private string $json;
+    private vfsStreamDirectory $root;
     public function setup(): void
     {
-        $this->nullableData = [
-            'nullable_str'      => null,
-            'nullable_int'      => null,
-            'nullable_array'    => null,
-            'nullable_object'   => null,
-            'nullable_float'    => null,
-            'nullable_bool'     => null,
-            'nullable_enum'     => null
+        $this->root               = vfsStream::setup('temp');
+        StaticStatus::$cachedMeta = [];
+        $this->array              = [
+            'string'              => 'string',
+            'int'                 => 1,
+            'float'               => 1.1,
+            'bool'                => true,
+            'null'                => null,
+            'array'               => [1, 2, 3],
+            'emptyArray'          => [],
+            'union'               => 'string',
+            'unionWithoutArray'   => 'string',
+            'unionStringAndInt'   => 'string',
+            'unionClasses'        => SVO::from(''),
+            'unionSVOs'           => 'example@hotmail.com',
+            'enum1'               => 'ONE',
+            'enum2'               => 'one',
+            'enum3'               => Enum::ONE,
+            'enumMixed'           => 'string',
+            'nullableString'      => 'string',
+            'nullableInt'         => null,
+            'nullableArray'       => null,
+            'nullableFloat'       => null,
+            'nullableBool'        => null,
+            'nullableEnum'        => null,
+            'mixed'               => 'string',
+            'dataTransferObjects' => [],
+            'valueObjects'        => [],
+            'singleValueObjects'  => [],
         ];
-        $this->basicData = [
-            'string'       => 'string',
-            'int'       => 1,
-            'array'     => [1,2,3],
-            'object'    => (object)[1,2,3],
-            'float'     => 1.1,
-            'bool'      => true,
-            'enum'      => Enum::ONE
-        ] + $this->nullableData;
-        $this->advancedDataByArray = $this->basicData + [
-            'basic' => $this->basicData,
-            'arrayOfBasics' => [
-                $this->basicData,
-                $this->basicData
+        $this->json = json_encode($this->array);
+    }
+    public function testBasic()
+    {
+        ImmutableBase::debug(__DIR__);
+        $dtoFromArray         = DTO::fromArray($this->array + ['redundant' => '']);
+        $expectArray          = json_decode(json_encode($this->array), true);
+        $expectArray['enum1'] = 'one';
+        $expectArray['enum3'] = 'one';
+        $this->assertEquals(
+            $dtoFromArray->toArray(),
+            $expectArray
+        );
+        ImmutableBase::debug(null);
+
+        $dtoFromJson       = DTO::fromJson($this->json);
+        $expectJson        = json_decode(json_encode($this->array));
+        $expectJson->enum1 = 'one';
+        $expectJson->enum3 = 'one';
+        $expectJson        = json_encode($expectJson);
+        $this->assertEquals(
+            $dtoFromJson->toJson(),
+            $expectJson
+        );
+
+        $json   = json_encode($this->array);
+        $object = json_decode($json);
+        $array  = array_merge($this->array, [
+            'dataTransferObjects' => [
+                $this->array,
+                $json,
+                $object,
+                DTO::fromArray($this->array),
+                DTO::fromJson($json),
             ],
-            'union'         => 'string',
-            'unionNullable' => 'string',
-        ];
-        $this->advancedDataByInstance = $this->basicData + [
-            'basic' => new Basic($this->basicData),
-            'arrayOfBasics' => [
-                new Basic($this->basicData),
-                new Basic($this->basicData)
+            'valueObjects'        => [
+                $this->array,
+                $json,
+                $object,
+                VO::fromArray($this->array),
+                VO::fromJson($json),
             ],
-            'union'         => 'string',
-            'unionNullable' => 'string',
-        ];
-        $this->modifyBasicData = [
-            'string'       => 'string_',
-            'int'       => 2,
-            'array'     => [4,5,6],
-            'object'    => (object)[4,5,6],
-            'float'     => 2.2,
-            'bool'      => false,
-            'enum'      => Enum::TWO,
-            'nullable_str'       => 'string_',
-            'nullable_int'       => 2,
-            'nullable_array'     => [1,2,3],
-            'nullable_object'    => (object)[1,2,3],
-            'nullable_float'     => 2.2,
-            'nullable_bool'      => false,
-            'nullable_enum'      => Enum::TWO,
-        ];
-        $this->modifyAdvancedDataByArray = $this->modifyBasicData + [
-            'basic' => $this->modifyBasicData,
-            'arrayOfBasics' => [
-                $this->modifyBasicData,
-                $this->modifyBasicData
+            'singleValueObjects'  => [
+                '',
+                SVO::from(''),
             ],
-            'union' => 123,
-            'unionNullable' => null
-        ];
-        $this->modifyAdvancedDataByInstance = $this->modifyBasicData + [
-            'basic' => new Basic($this->modifyBasicData),
-            'arrayOfBasics' => [
-                new Basic($this->modifyBasicData),
-                new Basic($this->modifyBasicData)
-            ],
-            'union' => 123,
-            'unionNullable' => null
-        ];
+        ]);
+        $json         = json_encode($array);
+        $dtoFromArray = DTO::fromArray($array);
+        $this->assertContainsOnlyInstancesOf(DTO::class, $dtoFromArray->dataTransferObjects);
+        $this->assertContainsOnlyInstancesOf(VO::class, $dtoFromArray->valueObjects);
+        $this->assertContainsOnlyInstancesOf(SVO::class, $dtoFromArray->singleValueObjects);
+        $dtoFromJson = DTO::fromJson($json);
+        $this->assertContainsOnlyInstancesOf(DTO::class, $dtoFromJson->dataTransferObjects);
+        $this->assertContainsOnlyInstancesOf(VO::class, $dtoFromJson->valueObjects);
+        $this->assertContainsOnlyInstancesOf(SVO::class, $dtoFromJson->singleValueObjects);
+
+        $dtoFromArray = $dtoFromArray->with([
+            'array'                        => [[1, 2], SVO::from('svo')],
+            'enum1'                        => 'TWO',
+            'enum2'                        => 'two',
+            'enum3'                        => Enum::TWO,
+            'nullableString'               => null,
+            'dataTransferObjects.0.string' => '1',
+            'dataTransferObjects.0.int'    => 1,
+            'singleValueObjects[1]'        => 'dto_svo_1',
+        ]);
+        $this->assertContainsOnlyInstancesOf(Enum::class, [$dtoFromArray->enum1, $dtoFromArray->enum2, $dtoFromArray->enum3]);
+
+        $dtoFromJson = $dtoFromJson->with([
+            'array'                        => [[1, 2], SVO::from('svo')],
+            'enum1'                        => 'TWO',
+            'enum2'                        => 'two',
+            'enum3'                        => Enum::TWO,
+            'nullableString'               => null,
+            'dataTransferObjects/0/string' => '1',
+            'dataTransferObjects/0/int'    => 1,
+            'singleValueObjects[1]'        => 'dto_svo_1',
+        ], '/');
+        $this->assertContainsOnlyInstancesOf(Enum::class, [$dtoFromJson->enum1, $dtoFromJson->enum2, $dtoFromJson->enum3]);
+        $this->assertTrue($dtoFromArray->equals($dtoFromJson));
+
+        $dtoFromArray = $dtoFromArray->with(['dataTransferObjects.1.string' => '2']);
+        $this->assertFalse($dtoFromArray->equals($dtoFromJson));
+
+        $pureDTO   = DTO::fromArray($this->array);
+        $extraDTO1 = ExtraDTO::fromArray($this->array + [
+            'string2'       => 'string2',
+            'dto'           => DTO::fromArray($array),
+            'unionClasses2' => SVO::from('unionClasses2'),
+        ]);
+        $this->assertEquals(
+            $extraDTO1->with(['dto' => $this->array])->dto->toArray(),
+            $pureDTO->toArray()
+        );
+        $this->assertObjectNotHasProperty(
+            '__redundant__',
+            $extraDTO1->with(['__redundant__' => 123]),
+        );
+        $this->assertEquals(
+            $extraDTO1->with(['dto' => $this->json])->dto->toArray(),
+            $pureDTO->toArray()
+        );
+        $this->assertEquals(
+            $extraDTO1->with((object) ['dto' => $this->array])->dto->toArray(),
+            $pureDTO->toArray()
+        );
+        $this->assertObjectNotHasProperty(
+            '__redundant__',
+            $extraDTO1->with((object) ['__redundant__' => 123])
+        );
+        $this->assertEquals(
+            $extraDTO1->with(json_encode(['dto' => $this->array]))->dto->toArray(),
+            $pureDTO->toArray()
+        );
+        $extraDTO2 = $extraDTO1->with(['dto.dataTransferObjects' => []]);
+        $this->assertFalse($extraDTO1->equals($extraDTO2));
+
+        DTO::fromArray(array_merge($this->array, ['union' => []]))->with(['union' => '']);
+        DTO::fromArray(array_merge($this->array, ['union' => 123]))->with(['union' => []]);
+
+        SVO3::from('');
+        $this->expectOutputString("SVO_3\nSVO_2\nSVO_1\n");
+        SkipOnNullDTO::fromArray([])->toArray();
+
+        ImmutableBase::strict(true);
+        LaxDTO::fromArray([]);
+        ImmutableBase::strict(false);
+    }
+    public function testBasicWithCache()
+    {
+        $file         = getcwd() . '/tests';
+        $cacheFile    = 'ib-cache.php';
+        $initialLevel = ob_get_level();
+        ob_start();
+        try {
+            (new Cacher())->scan($file);
+            if (!file_exists($cacheFile)) {
+                $this->fail('Cacher failed to create cache file.');
+            }
+            StaticStatus::$properties = [];
+            StaticStatus::$refs       = [];
+            StaticStatus::$cachedMeta = require $cacheFile; // NOSONAR
+        } finally {
+            while (ob_get_level() > $initialLevel) {
+                ob_end_clean();
+            }
+        }
+        try {
+            $this->testBasic();
+        } finally {
+            if (file_exists($cacheFile)) {
+                unlink($cacheFile);
+            }
+            StaticStatus::$cachedMeta = [];
+        }
+    }
+    public function testLoadCacheSuccessfullyPopulatesStaticStatus()
+    {
+        $mockData = ['SomeClass' => ['methods' => [], 'properties' => []]];
+
+        $cacheFile = vfsStream::newFile('ib-cache-' . uniqid('', true) . '.php')
+            ->at($this->root)
+            ->setContent('<?php return ' . var_export($mockData, true) . ';')
+            ->url();
+
+        StaticStatus::$cachedMeta = [];
+        StaticStatus::$cachePath  = $cacheFile;
+
+        ImmutableBase::loadCache();
+
+        $this->assertSame($mockData, StaticStatus::$cachedMeta);
     }
 
+    public function testInvalidValueWithThrowException()
+    {
+        $this->expectException(InvalidEnumValueException::class);
+        $this->expectExceptionMessage('\'THREE\' does not match any of Tests\TestObjects\Enum defined names or cases.');
+        $dto = DTO::fromArray($this->array);
+        $dto->with(['enum1' => 'THREE']);
+    }
+    public function testNullValueWithThrowNonNullablePropertyException()
+    {
+        $this->expectException(RequiredValueException::class);
+        $this->expectExceptionMessage('Property \'string\' must be present and non-null.');
 
-
-    public function testBasic(): void
-    {
-        $basic = new Basic($this->basicData);
-        $this->assertInstanceOf(
-            Basic::class,
-            $basic
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $basic->array
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $basic->object
-        );
+        $dto = DTO::fromArray($this->array);
+        $dto->with(['string' => null]);
     }
-    public function testAdvancedByArray(): void
+    public function testInvalidEnumThrowInvalidTypeException()
     {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $this->assertInstanceOf(
-            Advanced::class,
-            $advanced
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $advanced->array
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $advanced->object
-        );
+        $this->expectException(InvalidEnumValueException::class);
+        $this->expectExceptionMessage('\'test\' does not match any of Tests\TestObjects\Enum defined names or cases.');
+        DTO::fromArray(array_merge($this->array, ['enum1' => 'test']));
     }
-    public function testAdvancedByInstance(): void
+    public function testEmptyArrayOfClassThrowInvalidArrayOfClassException()
     {
-        $advanced = new Advanced($this->advancedDataByInstance);
-        $this->assertInstanceOf(
-            Advanced::class,
-            $advanced
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $advanced->array
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $advanced->object
-        );
+        $this->expectException(InvalidArrayOfTargetException::class);
+        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject.');
+        EmptyArrayOfClassDTO::fromArray(['regulars' => []]);
     }
-    public function testBasicToArray()
+    public function testInvalidArrayOfClassThrowInvalidArrayOfClassException()
     {
-        $basic = new Basic($this->basicData);
-        $basicArray = $basic->toArray();
-        $this->assertEquals(
-            $this->basicData,
-            $basicArray
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $basicArray['array']
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $basicArray['object']
-        );
+        $this->expectException(InvalidArrayOfTargetException::class);
+        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject.');
+        InvalidArrayOfClassDTO::fromArray(['regulars' => []]);
     }
-    public function testAdvancedByArrayToArray()
-    {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $advancedArray = $advanced->toArray();
-        $this->assertEquals(
-            $this->advancedDataByArray,
-            $advancedArray
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $advancedArray['array']
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $advancedArray['object']
-        );
-    }
-    public function testAdvancedByInstanceToArray()
-    {
-        $advanced = new Advanced($this->advancedDataByInstance);
-        $advancedArray = $advanced->toArray();
-        $this->assertEquals(
-            array_merge(
-                $this->advancedDataByInstance,
-                [
-                    'basic' => $this->advancedDataByInstance['basic']->toArray(),
-                    'arrayOfBasics' => array_map(
-                        fn ($b) => $b->toArray(),
-                        $this->advancedDataByInstance['arrayOfBasics']
-                    )
-                ]
-            ),
-            $advancedArray
-        );
-        $this->assertEquals(
-            [1,2,3],
-            $advancedArray['array']
-        );
-        $this->assertEquals(
-            (object)[1,2,3],
-            $advancedArray['object']
-        );
-    }
-    public function testBasicWith()
-    {
-        $basic = new Basic($this->basicData);
-        $modified = $basic->with($this->modifyBasicData);
-        $this->assertNotEquals(
-            $basic,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-        $array = [
-            'some' => 'value'
-        ];
-        $object = (object)[
-            'string' => 'example',
-            'array' => json_encode($array)
-        ];
-        $modified = $basic->with($object);
-        $this->assertEquals(
-            $object->string,
-            $modified->string
-        );
-        $this->assertEquals(
-            $array,
-            $modified->array
-        );
-    }
-    public function testBasicWithNullForNullable()
-    {
-        $basic = new Basic($this->basicData);
-        $modified = $basic->with($this->modifyBasicData)->with($this->nullableData);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            array_merge(
-                $this->modifyBasicData,
-                $this->nullableData
-            ),
-            $modifiedArray
-        );
-    }
-    public function testAdvancedByArrayWith()
-    {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $modified = $advanced->with($this->modifyAdvancedDataByArray);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            $this->modifyAdvancedDataByArray,
-            $modifiedArray
-        );
-        $this->assertNotEquals(
-            $advanced,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->basic->object
-        );
-    }
-    public function testAdvancedByInstanceWith()
-    {
-        $advanced = new Advanced($this->advancedDataByInstance);
-        $modified = $advanced->with($this->modifyAdvancedDataByInstance);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            array_merge(
-                $this->modifyAdvancedDataByInstance,
-                [
-                    'basic' => $this->modifyAdvancedDataByInstance['basic']->toArray(),
-                    'arrayOfBasics' => array_map(
-                        fn ($b) => $b->toArray(),
-                        $this->modifyAdvancedDataByInstance['arrayOfBasics']
-                    )
-                ]
-            ),
-            $modifiedArray
-        );
-        $this->assertNotEquals(
-            $advanced,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->basic->object
-        );
-    }
-    public function testAdvancedByArrayWithUnionToNotBuiltin()
-    {
-        $basic = new Basic($this->basicData);
-        $advanced = new Advanced($this->modifyAdvancedDataByArray);
-        $modified = $advanced->with(['union' => $basic]);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            array_merge(
-                $this->modifyAdvancedDataByArray,
-                ['union' => $basic->toArray()]
-            ),
-            $modifiedArray
-        );
-    }
-    public function testBasicWithToArray()
-    {
-        $basic = new Basic($this->basicData);
-        $modified = $basic->with($this->modifyBasicData);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            $this->modifyBasicData,
-            $modifiedArray
-        );
-        $this->assertNotEquals(
-            $basic,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-    }
-    public function testAdvancedByArrayWithToArray()
-    {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $modified = $advanced->with($this->modifyAdvancedDataByArray);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            $this->modifyAdvancedDataByArray,
-            $modifiedArray
-        );
-        $this->assertNotEquals(
-            $advanced,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->basic->object
-        );
-    }
-    public function testAdvancedByInstanceWithToArray()
-    {
-        $advanced = new Advanced($this->advancedDataByInstance);
-        $modified = $advanced->with($this->modifyAdvancedDataByInstance);
-        $modifiedArray = $modified->toArray();
-        $this->assertEquals(
-            array_merge(
-                $this->modifyAdvancedDataByInstance,
-                [
-                    'basic' => $this->modifyAdvancedDataByInstance['basic']->toArray(),
-                    'arrayOfBasics' => array_map(
-                        fn ($b) => $b->toArray(),
-                        $this->modifyAdvancedDataByInstance['arrayOfBasics']
-                    )
-                ]
-            ),
-            $modifiedArray
-        );
-        $this->assertNotEquals(
-            $advanced,
-            $modified
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->object
-        );
-        $this->assertEquals(
-            (object)[4,5,6],
-            $modified->basic->object
-        );
-    }
-    public function testImmutableBaseSkipsInitializedReadonlyProperties()
-    {
-        $this->assertEquals(
-            [
-                'foo' => 'foo',
-            ],
-            (
-                new #[DataTransferObject] class () extends Initialized {
-                    public function __construct()
-                    {
-                        parent::__construct([
-                            'foo' => 'bar',
-                        ]);
-                    }
-                }
-            )->toArray()
-        );
-    }
-    public function testEnumAcceptable()
-    {
-        $basic_1 = new Basic(array_merge($this->basicData, ['enum' => 'one']));
-        $basic_2 = new Basic(array_merge($this->basicData, ['enum' => 'TWO']));
-        $this->assertEquals(Enum::ONE, $basic_1->enum);
-        $this->assertEquals(Enum::TWO, $basic_2->enum);
-    }
-
-
-
-    public function testWithBuiltinNotAllowsNullThrowException()
-    {
-        $basic = new Basic($this->basicData);
-        $this->expectException(NonNullablePropertyException::class);
-        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic string value is required and must be string.');
-        $basic->with(['string' => null]);
-    }
-    public function testWithNotBuiltinAndNotAllowsNullThrowException()
-    {
-        $basic = new Basic($this->basicData);
-        $this->expectException(NonNullablePropertyException::class);
-        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic enum value is required and must be Tests\Enum.');
-        $basic->with(['enum' => null]);
-    }
-    public function testValueTypeNotInUnionTypeThrowException()
-    {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $this->expectException(InvalidTypeException::class);
-        $this->expectExceptionMessage('Tests\DataTransferObjects\Advanced union expected types: Tests\DataTransferObjects\Basic|string|int, got double.');
-        $advanced->with(['union' => 1.1]);
-    }
-    public function testArrayGivenButUnionTypeDoesNotIncludeThrowsException()
-    {
-        $advanced = new Advanced($this->advancedDataByArray);
-        $this->expectException(InvalidTypeException::class);
-        $this->expectExceptionMessage('Tests\DataTransferObjects\Advanced union type is union and does not include array; an instantiated object is required.');
-        $advanced->with(['union' => []]);
-    }
-    public function testWithEnumNotInCasesThrowException()
-    {
-        $basic = new Basic($this->basicData);
-        $this->expectException(InvalidTypeException::class);
-        $this->expectExceptionMessage('Tests\DataTransferObjects\Basic enum is Tests\Enum and does not include \'THREE\'.');
-        $basic->with(['enum' => 'THREE']);
-    }
-    public function testArrayOfEmptyThrowException()
-    {
-        $this->expectException(InvalidArrayOfClassException::class);
-        $this->expectExceptionMessage('Tests\ExceptionObjects\ArrayOfEmptyClass arrayOf needs to specify a target class in its #[ArrayOf] attribute.');
-        new ArrayOfEmptyClass(['arrayOf' => [1]]);
-    }
-    public function testArrayOfClassShouldBeSubClassOfImmutableBaseThrowException()
-    {
-        $this->expectException(InvalidArrayOfClassException::class);
-        $this->expectExceptionMessage('Tests\ExceptionObjects\ArrayOfNotExistsClass arrayOf must reference a class that extends ImmutableBase in its #[ArrayOf] attribute.');
-        new ArrayOfNotExistsClass(['arrayOf' => []]);
-    }
-    public function testShouldHaveAttributeThrowException()
-    {
-        $this->expectException(AttributeException::class);
-        $this->expectExceptionMessage('ImmutableBase subclasses must be annotated with either #[DataTransferObject] or #[ValueObject] or #[Entity].');
-        new class () extends ImmutableBase {
-        };
-    }
-    public function testPropertyShouldBePublicThrowException()
-    {
-        $this->expectException(InvalidPropertyVisibilityException::class);
-        $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePublicButPrivate string must be declared public and readonly.');
-        new ShouldBePublicButPrivate();
-    }
-    public function testPropertyShouldNotBePublicThrowException()
-    {
-        $this->expectException(InvalidPropertyVisibilityException::class);
-        $this->expectExceptionMessage('Tests\ExceptionObjects\ShouldBePrivateButPublic string must be declared private or protected');
-        new ShouldBePrivateButPublic();
-    }
-    public function testUnionTypesSkipTilCorrectThrowException()
-    {
-        $this->expectException(InvalidTypeException::class);
-        new Advanced(
-            array_merge(
-                $this->modifyAdvancedDataByArray,
-                ['union' => 1.1]
-            )
-        );
-    }
-    public function testInvalidJsonStringForFromJsonException()
+    public function testInvalidJsonThrowInvalidJsonException()
     {
         $this->expectException(InvalidJsonException::class);
-        $this->expectExceptionMessage('Invalid JSON string.');
-        BasicFromJson::fromJson('');
+        $this->expectExceptionMessage('Invalid Json string.');
+        DTO::fromJson('');
+    }
+    public function testInvalidArrayForUnionWithoutArrayThrowInvalidTypeException()
+    {
+        $this->expectException(InvalidValueException::class);
+        $this->expectExceptionMessage('Invalid value: expected string|int|float|bool, got array.');
+        DTO::fromArray(array_merge($this->array, ['unionWithoutArray' => []]));
+    }
+    public function testUndeclaredValueForUnionTypeThrowInvalidTypeException()
+    {
+        $this->expectException(InvalidValueException::class);
+        $this->expectExceptionMessage('Invalid value: expected string|int, got bool.');
+        DTO::fromArray(array_merge($this->array, ['unionStringAndInt' => false]));
+    }
+    public function testUndeclaredValueForUnionTypeThrowInvalidTypeException2()
+    {
+        $this->expectException(InvalidValueException::class);
+        $this->expectExceptionMessage('Invalid value: expected string|int, got stdClass.');
+        DTO::fromArray(array_merge($this->array, ['unionStringAndInt' => (object) []]));
+    }
+    public function testPrivatePropertyThrowInvalidPropertyVisibilityException()
+    {
+        $this->expectException(InvalidVisibilityException::class);
+        $this->expectExceptionMessage('string must be public and readonly.');
+        PrivatePropertyDTO::fromArray($this->array);
+    }
+    public function testProtectedPropertyThrowInvalidPropertyVisibilityException()
+    {
+        $this->expectException(InvalidVisibilityException::class);
+        $this->expectExceptionMessage('string must be public and readonly.');
+        ProtectedPropertyDTO::fromArray($this->array);
+    }
+    public function testInvalidNamedTypeThrowInvalidTypeException()
+    {
+        $this->expectException(InvalidValueException::class);
+        $this->expectExceptionMessage('Invalid value: expected Tests\DataTransferObjects\DTO, got bool.');
+        ExtraDTO::fromArray([
+            'string2'       => 'string2',
+            'dto'           => false,
+            'unionClasses2' => SVO::from(''),
+        ]);
+    }
+    public function testInvalidObjectThrowInvalidTypeException()
+    {
+        $this->expectException(InvalidValueException::class);
+        $this->expectExceptionMessage('Invalid value: expected string, got stdClass.');
+        DTO::fromArray(array_merge($this->array, ['string' => (object) ['test']]));
+    }
+    public function testStrictDTOThrowStrictViolationException()
+    {
+        $this->expectException(StrictViolationException::class);
+        $this->expectExceptionMessage('Disallowed \'__redundant__\' for Tests\DataTransferObjects\StrictDTO.');
+        StrictDTO::fromArray(['__redundant__' => '']);
+    }
+    public function testDebugLogPathNotFoundThrow()
+    {
+        try {
+            $this->expectException(DebugLogDirectoryInvalidException::class);
+            $this->expectExceptionMessage("'./example' for debug log does not exist is not writable, or is not a directory.");
+            ImmutableBase::debug('./example');
+            LaxDTO::fromArray([
+                '__redundant__' => '',
+            ]);
+        } catch (DebugLogDirectoryInvalidException $e) {
+            ImmutableBase::debug(null);
+            throw $e;
+        }
+    }
+    public function testArrayOfUsageException()
+    {
+        $this->expectException(InvalidArrayOfUsageException::class);
+        $this->expectExceptionMessage('#[ArrayOf] attribute can only be applied to array properties. $dtos is typed as string');
+        InvalidArrayOfUsageDTO::fromArray([]);
+    }
+    public function testInvalidValueForArrayOfWithThrowException()
+    {
+        $this->expectException(InvalidJsonException::class);
+        $this->expectExceptionMessage('Invalid Json string.');
+        $dto = DTO::fromArray($this->array);
+        $dto->with([
+            'dataTransferObjects' => 'string',
+        ]);
+    }
+    public function testInvalidWithPathException()
+    {
+        $this->expectException(InvalidWithPathException::class);
+        $this->expectExceptionMessage('Cannot deeply update $string as it is not an array or a subclass of ImmutableBase.');
+        $dto = DTO::fromArray($this->array);
+        $dto->with([
+            'string.1' => 'test',
+        ]);
+    }
+    public function testInvalidCompareTargetException()
+    {
+        $this->expectException(InvalidCompareTargetException::class);
+        $this->expectExceptionMessage('stdClass cannot be compared.');
+        $dto = DTO::fromArray(['array' => [(object) [1, 2, 3], 2, 3]] + $this->array);
+        $dto->equals(DTO::fromArray($this->array));
     }
 }

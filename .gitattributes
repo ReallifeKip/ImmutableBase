@@ -1,2 +1,11 @@
-/tests export-ignore
-/benchmarks export-ignore
+.github                    export-ignore
+.vscode                    export-ignore
+tests                      export-ignore
+benchmarks                 export-ignore
+
+.gitignore                 export-ignore
+.gitattributes             export-ignore
+sonar-project.properties   export-ignore
+phpunit.xml                export-ignore
+phpbench.json              export-ignore
+CHANGELOG.md               export-ignore
