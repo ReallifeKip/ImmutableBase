@@ -79,21 +79,25 @@ SomeException: {error message}
 ### ⚡ Lightning-Fast Startup
 
 🥳 ImmutableBase can scan and generate a metadata cache file `ib-cache.php` via `vendor/bin/ib-cacher`, maximizing startup performance.
+
 🫤 The conventional approach may lack any caching mechanism, paying the cost of reflection on every request.
 
 ### 🔗 Automatic and Controllable Validation Chain
 
 🥳 ImmutableBase's `ValueObject` and `SingleValueObject` support an optional `validate(): bool` method. During construction, the entire inheritance chain is automatically traversed top-down for validation. Apply `#[ValidateFromSelf]` to reverse the direction.
+
 🫤 The conventional approach rarely offers an automatic validation chain - validation logic must be manually wired in constructors.
 
 ### 📃 Documentation as Code, Code as Documentation
 
 🥳 ImmutableBase can scan all subclasses in your project via `vendor/bin/ib-writer`, generating Mermaid class diagrams and Markdown property tables to keep documentation in sync with code.
+
 🫤 The conventional approach cannot guarantee consistency between code and documentation.
 
 ### 🆓 Highly Compatible, Lightweight, Zero Dependencies
 
 🥳 ImmutableBase requires **no additional dependencies and is not tied to any framework** when used without documentation generation, caching, or testing.
+
 🫤 The conventional approach, when coupled to a specific package or framework, is difficult to decouple quickly.
 
 ### 📦 Controllable Data Output

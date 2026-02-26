@@ -79,21 +79,25 @@ SomeException: {錯誤訊息}
 ### ⚡閃電般的啟動速度
 
 🥳 ImmutableBase 可以透過 `vendor/bin/ib-cacher` 掃瞄並建置所有 ImmutableBase 物件快取檔案 `ib-cache.php`，極致優化速度。
+
 🫤 一般常見做法可能根本不存在快取機制，每次運行都需要為反射付出大量時間成本。
 
 ### 🔗自動且可控的繼承驗證鏈
 
 🥳 ImmutableBase 的 `ValueObject`、`SingleValueObject` 可選設計 `validate(): bool`，使物件在建構初期就自動由繼承鏈最上層開始向下歷遍 `validate(): bool` 進行驗證，且可透過 `#[ValidateFromSelf]` 反轉驗證方向。
+
 🫤 一般常見做法幾乎無自動驗證鏈機制及概念，只能透過建構子自己設計。
 
 ### 📃文件即代碼，代碼即文件
 
 🥳 ImmutableBase 可以透過 `vendor/bin/ib-writer` 對專案進行 ImmutableBase 子類物件掃描，力求避免文件與代碼不一致、需要花費額外人力的窘境，快速產出 Mermaid、Markdown 等技術文件。
+
 🫤 一般常見做法無法保障代碼與文件一致。
 
 ### 🆓高相容、輕量化、0 依賴
 
 🥳 ImmutableBase 使用時，若無產出文件、產出快取、單元或效能測試的需求，**不需要額外安裝任何依賴，不依附於任何框架**。
+
 🫤 一般常見做法若依賴特定套件或框架則難以快速解藕。
 
 ### 📦可控的資料輸出
