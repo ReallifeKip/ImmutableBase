@@ -14,8 +14,10 @@ if (StaticStatus::$cachedMeta === []) {
 }
 
 /**
+ * @Warmup(5)
+ * @BeforeMethods("setUp")
  * @Revs(1000)
- * @Iterations(5)
+ * @Iterations(15)
  * @OutputTimeUnit("milliseconds")
  */
 class DefaultBench
@@ -24,7 +26,7 @@ class DefaultBench
     private array $nestedPayload;
     private array $orderPayload;
 
-    public function __construct()
+    public function setUp()
     {
         $this->simplePayload = [
             'name'     => 'Kip',
@@ -75,10 +77,6 @@ class DefaultBench
             'items'    => $items,
         ];
     }
-    /**
-     * @Revs(1)
-     * @Iterations(50)
-     */
     public function benchSimpleHydration(): void
     {
         SimpleDTO::fromArray($this->simplePayload);
@@ -88,10 +86,6 @@ class DefaultBench
     {
         NestedDTO::fromArray($this->nestedPayload);
     }
-    /**
-     * @Revs(1)
-     * @Iterations(50)
-     */
     public function benchBulkSimpleHydration(): void
     {
         for ($i = 0; $i < 1000; $i++) {

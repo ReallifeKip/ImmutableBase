@@ -13,8 +13,10 @@ if (StaticStatus::$cachedMeta === []) {
 }
 
 /**
- * @Revs(100000)
- * @Iterations(5)
+ * @Warmup(5)
+ * @BeforeMethods("setUp")
+ * @Revs(1000)
+ * @Iterations(15)
  * @OutputTimeUnit("milliseconds")
  */
 class WidePayloadBench
@@ -22,7 +24,7 @@ class WidePayloadBench
     private array $noisePayload;
     private array $widePayload;
 
-    public function __construct()
+    public function setUp()
     {
         $this->noisePayload = [];
         for ($i = 0; $i < 2000; $i++) {
@@ -40,20 +42,10 @@ class WidePayloadBench
             $this->widePayload["col_{$i}"] = "value_{$i}";
         }
     }
-
-    /**
-     * @Revs(1)
-     * @Iterations(50)
-     */
     public function benchNoiseFiltering(): void
     {
         TargetDTO::fromArray($this->noisePayload);
     }
-
-    /**
-     * @Revs(1)
-     * @Iterations(50)
-     */
     public function benchWideFlattened(): void
     {
         WideFlatDTO::fromArray($this->widePayload);

@@ -9,10 +9,12 @@ use Benchmarks\DataTransferObjects\Order;
 use Benchmarks\DataTransferObjects\SimpleDTO;
 use Benchmarks\Enums\OrderStatus;
 use PhpBench\Attributes\BeforeMethods;
-use PhpBench\Attributes\Iterations;
-use PhpBench\Attributes\Revs;
-use PhpBench\Attributes\Warmup;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\StaticStatus;
+
+if (StaticStatus::$cachedMeta === []) {
+    ImmutableBase::loadCache();
+}
 
 /**
  * Benchmark suite for with() method.
@@ -24,11 +26,13 @@ use ReallifeKip\ImmutableBase\ImmutableBase;
  *   vendor/bin/phpbench run benchmarks/WithBench.php --tag=before
  *   (apply changes)
  *   vendor/bin/phpbench run benchmarks/WithBench.php --tag=after --ref=before --report=compare
+ *
+ * @Warmup(5)
+ * @BeforeMethods("setUp")
+ * @Revs(1000)
+ * @Iterations(15)
+ * @OutputTimeUnit("milliseconds")
  */
-#[BeforeMethods('setUp')]
-#[Warmup(3)]
-#[Iterations(10)]
-#[Revs(100)]
 class WithBench
 {
     private SimpleDTO $simpleDTO;
@@ -184,7 +188,6 @@ class WithBench
      * Simulate repeated updates (e.g., event sourcing, reducer).
      * Each iteration produces a new immutable instance.
      */
-    #[Revs(10)]
     public function benchWithBatch100(): void
     {
         $obj = $this->simpleDTO;

@@ -12,6 +12,7 @@
 - `Cacher` and `Writer` success messages moved to their respective CLI entry points (`bin/ib-cacher`, `bin/ib-writer`).
 - `Cacher::scan()` accepts `$silent` parameter to suppress warnings in test contexts.
 - Removed unnecessary `ob_start`/`ob_end_clean` from `Cacher` (no longer needed after instantiation strategy change).
+- Update benchmarks config to 5 warmups, 1000 revs, and 15 iterations
 
 ## [4.0.0-rc.3] - 2026-02-27
 
