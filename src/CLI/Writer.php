@@ -67,8 +67,11 @@ class Writer
         self::$docblock  = DocBlockFactory::createInstance();
         file_put_contents($outputDir, '', LOCK_EX);
         self::indexDirectory();
-        $classMap        = self::buildClassMap();
-        $shortNameCount  = array_map(static fn($info) => $counts[$info['shortName']] = ($counts[$info['shortName']] ?? 0) + 1, $classMap) ?? [];
+        $classMap = self::buildClassMap();
+        foreach ($classMap as $info) {
+            $counts[$info['shortName']] = ($counts[$info['shortName']] ?? 0) + 1;
+        }
+        $shortNameCount  = $counts ?? [];
         $namespaceGroups = self::buildNamespaceGroups($classMap);
         $content         = array_merge(
             match (self::$type) {

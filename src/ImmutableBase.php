@@ -742,8 +742,12 @@ abstract readonly class ImmutableBase
             }
         }
         foreach ($grouped ?? [] as $index => $deeperValues) {
-            if (isset($current[$index]) && $current[$index] instanceof self) {
-                $current[$index] = $current[$index]->with($deeperValues, $separator);
+            if (isset($current[$index])) {
+                $current[$index] = match (true) {
+                    $current[$index] instanceof self => $current[$index]->with($deeperValues, $separator),
+                    \is_array($current[$index])      => self::applyArrayDeepUpdate($current[$index], $deeperValues, $separator),
+                    default                          => $current[$index], // scalar, can't traverse
+                };
             }
         }
 
@@ -938,34 +942,49 @@ abstract readonly class ImmutableBase
         if ($this instanceof SingleValueObject) {
             return $data instanceof $static ? $data : $static::from($data);
         }
-        $values         = get_object_vars($this);
-        $types          = StaticStatus::$properties[$static]['types'] ?? [];
-        $normalizedData = \is_string($data) ? $this->jsonParser($data, false) : (array) $data;
-        foreach ($normalizedData as $path => $value) {
-            if ($separator !== '' && strpbrk($path, "$separator\[")) {
-                [$root, $rest]             = self::parseDeepPath($path, $separator, $values);
-                $deepUpdates[$root][$rest] = $value;
-            } elseif (isset($values[$path], $types[$path])) {
-                $values[$path] = self::resolveValue($types[$path], $value, true);
+        ImmutableBaseException::$depth++;
+        try {
+            $values         = get_object_vars($this);
+            $props          = StaticStatus::$properties[$static];
+            $types          = $props['types'];
+            $normalizedData = \is_string($data) ? self::jsonParser($data, false) : (array) $data;
+            foreach ($normalizedData as $path => $value) {
+                $errorPath = $path;
+                if ($separator !== '' && strpbrk($path, "$separator\[")) {
+                    [$root, $rest]             = self::parseDeepPath($path, $separator, $values);
+                    $deepUpdates[$root][$rest] = $value;
+                    $errorPath                 = $root;
+                } elseif (isset($values[$path], $types[$path])) {
+                    $values[$path] = self::resolveValue($types[$path], $value, true);
+                }
             }
-        }
-        foreach ($deepUpdates ?? [] as $root => $sub) {
-            $current       = $values[$root];
-            $values[$root] = match (true) {
-                $current instanceof self => $current->with($sub, $separator),
-                default                  => self::applyArrayDeepUpdate($current, $sub, $separator)
-            };
-        }
-        $ref      = StaticStatus::$refs[$static] ??= new ReflectionClass($static);
-        $instance = $ref->newInstanceWithoutConstructor();
-        StaticStatus::$properties[$static]['hydrator']($instance, $values);
-        if (!StaticStatus::$properties[$static]['isDTO']) {
-            /** @var class-string<ValueObject> $static */
-            $cache = StaticStatus::$properties;
-            $class = $cache[$static];
-            $static::enforceValidationRules($instance, $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'], $cache);
-        }
+            foreach ($deepUpdates ?? [] as $root => $sub) {
+                $errorPath     = $root;
+                $current       = $values[$root];
+                $values[$root] = match (true) {
+                    $current instanceof self => $current->with($sub, $separator),
+                    default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
+                };
+            }
+            $ref      = StaticStatus::$refs[$static] ??= new ReflectionClass($static);
+            $instance = $ref->newInstanceWithoutConstructor();
+            $props['hydrator']($instance, $values);
+            if (!$props['isDTO']) {
+                $cache = StaticStatus::$properties;
+                $class = $cache[$static];
+                /** @var class-string<ValueObject> $static */
+                $static::enforceValidationRules(
+                    $instance,
+                    $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'],
+                    $cache
+                );
+            }
+            ImmutableBaseException::$depth--;
 
-        return $instance;
+            return $instance;
+        } catch (ImmutableBaseException $e) {
+            ImmutableBaseException::$depth--;
+            throw $e->prependPath($static, $errorPath ?? null);
+        }
     }
 }

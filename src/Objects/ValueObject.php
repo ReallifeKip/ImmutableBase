@@ -6,6 +6,7 @@ namespace ReallifeKip\ImmutableBase\Objects;
 
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\StaticStatus;
 use ReallifeKip\ImmutableBase\Types;
 use ReflectionClass;
 
@@ -27,10 +28,11 @@ abstract readonly class ValueObject extends ImmutableBase
         self::executeSafely(function () use ($data) {
             if (!$this instanceof SingleValueObject) {
                 parent::__construct($data);
+                $cache = StaticStatus::$properties;
             } else {
                 $this->value = $data;
+                $cache       = $this::buildPropertyInheritanceChain($this);
             }
-            $cache = $this::buildPropertyInheritanceChain($this);
             $class = $cache[static::class];
             $this::enforceValidationRules($this, $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'], $cache);
         });
@@ -56,7 +58,7 @@ abstract readonly class ValueObject extends ImmutableBase
      * @throws ValidationChainException If any validation rule fails (returns false).
      * @return void
      */
-    protected static function enforceValidationRules(self | SingleValueObject $object, array $classTree, array $properties)
+    protected static function enforceValidationRules(self $object, array $classTree, array $properties)
     {
         $value = null;
         foreach ($classTree as $class) {

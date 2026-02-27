@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [4.0.0-rc.3] - 2026-02-27
+
+### Fixed
+
+- `with()` error path tracing restored. The rc.2 optimization bypassed the constructor path, causing validation and initialization errors to lose hierarchical property paths. Now consistent with `fromArray()` / `fromJson()` behavior again.
+- `Writer::generate()` short name collision detection now works correctly. Previously, the arrow function captured `$counts` by value, causing duplicate short names across different namespaces to never be detected.
+- `applyArrayDeepUpdate()` now recursively handles nested plain arrays. Previously, deep paths targeting non-ImmutableBase arrays (e.g. `matrix.0.1`) were silently ignored.
+- `arrayOfInitialize()` PHPDoc `@return` corrected from `array` to `mixed`.
+
+### Changed
+
+- `ValueObject::__construct` no longer redundantly calls `buildPropertyInheritanceChain()`. Cache is read directly from `StaticStatus::$properties` after `parent::__construct()` completes.
+- `enforceValidationRules()` type hint simplified from `self | SingleValueObject` to `self`.
+
 ## [4.0.0-rc.2] - 2026-02-27
 
 ### Changed
