@@ -325,7 +325,6 @@ class Writer
      */
     private static function tryInstantiateClass(string $class): void
     {
-        ob_start();
         try {
             $ref = new ReflectionClass($class);
             ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
@@ -335,8 +334,6 @@ class Writer
                 fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
             }
             // Silently skip classes that cannot be instantiated
-        } finally {
-            ob_end_clean();
         }
     }
 

@@ -76,8 +76,9 @@ class Cacher
      * via buildPropertyInheritanceChain() before the exception occurs.
      *
      * @param string $dir Root directory to scan.
+     * @return void
      */
-    private function indexDirectory(string $dir, bool $silent)
+    private function indexDirectory(string $dir, bool $silent): void
     {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
         foreach ($iterator as $file) {
@@ -126,9 +127,9 @@ class Cacher
      * T_CLASS tokens respectively.
      *
      * @param string $path Absolute file path.
-     * @return array FQCN or null if no class declaration is found.
+     * @return list<class-string>
      */
-    private static function parseFullClassname(string $content)
+    private static function parseFullClassname(string $content): array
     {
         $tokens           = token_get_all($content);
         $namespace        = '';
