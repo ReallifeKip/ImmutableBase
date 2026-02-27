@@ -3,6 +3,7 @@
 namespace ReallifeKip\ImmutableBase\CLI;
 
 use Composer\Autoload\ClassLoader;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
@@ -41,14 +42,14 @@ class Cacher
      *
      * @param string $dir Root directory to scan for ImmutableBase subclasses.
      */
-    public function scan(string $dir): void
+    public function scan(string $dir, bool $silent = false): void
     {
         $outputPath     = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php';
         $exclude        = array_flip(['ref', 'validateMethod', 'hydrator']);
         $excludeType    = array_flip(['ref', 'typeRef', 'resolver', 'propertyRef']);
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];
-        $this->indexDirectory($dir);
+        $this->indexDirectory($dir, $silent);
         foreach (StaticStatus::$properties as $className => $props) {
             $entry = array_diff_key($props, $exclude);
             foreach ($entry['types'] as $name => $type) {
@@ -76,7 +77,7 @@ class Cacher
      *
      * @param string $dir Root directory to scan.
      */
-    private function indexDirectory(string $dir)
+    private function indexDirectory(string $dir, bool $silent)
     {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
         foreach ($iterator as $file) {
@@ -89,14 +90,15 @@ class Cacher
             ) {
                 continue;
             }
-            $classes = self::parseFullClassname($file->getRealPath());
+            $content = file_get_contents($file->getRealPath());
+            $classes = $content ? self::parseFullClassname($content) : [];
             foreach ($classes as $class) {
-                ob_start();
                 try {
                     if (
                         match (true) {
                             $class === self::class                         => true,
                             empty(trim($class))                            => true,
+                            !class_exists($class)                          => true,
                             (new ReflectionClass($class))->isAbstract()    => true,
                             (new ReflectionClass($class))->isTrait()       => true,
                             !is_subclass_of($class, self::$baseClasses[0]) => true,
@@ -105,15 +107,14 @@ class Cacher
                     ) {
                         continue;
                     }
-                    if (is_subclass_of($class, self::$baseClasses[3])) {
-                        $class::from('');
-                        continue;
-                    }
-                    $class::fromArray([]);
-                } catch (Throwable) {
-                    // Silently skip classes that cannot be instantiated
-                } finally {
-                    ob_end_clean();
+                    $ref = new ReflectionClass($class);
+                    ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
+                    $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
+                } catch (DefinitionException | Throwable $e) {
+                    match (true) {
+                        $e instanceof DefinitionException && !$silent => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
+                        default => null// Silently skip classes that cannot be instantiated
+                    };
                 }
             }
         }
@@ -127,38 +128,38 @@ class Cacher
      * @param string $path Absolute file path.
      * @return array FQCN or null if no class declaration is found.
      */
-    private static function parseFullClassname(string $path)
+    private static function parseFullClassname(string $content)
     {
-        $content = file_get_contents($path);
-        if ($content === false) {
-            return [];
-        }
         $tokens           = token_get_all($content);
         $namespace        = '';
         $classes          = [];
         $gettingNamespace = false;
         $gettingClass     = false;
+        $prevTokenType    = null;
         foreach ($tokens as $token) {
-            switch (true) {
-                case $token === ';':
+            if (!\is_array($token)) {
+                if ($token === ';') {
                     $gettingNamespace = false;
-                    continue 2;
-                case $token[0] === T_NAMESPACE:
-                    $gettingNamespace = true;
-                    break;
-                case $token[0] === T_CLASS:
-                    $gettingClass = true;
-                    break;
-                default:
-                    break;
+                }
+                continue;
             }
-            if ($gettingNamespace && ($token[0] === T_NAME_QUALIFIED || $token[0] === T_STRING)) {
-                $namespace .= $token[1];
+            [$type, $value] = $token;
+            match (true) {
+                $type === T_NAMESPACE                                  => $gettingNamespace = true,
+                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON => $gettingClass = true,
+                default                                                => null
+            };
+            if ($gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)) {
+                $namespace .= $value;
             }
-            if ($gettingClass && $token[0] === T_STRING) {
-                $classes[]    = $namespace ? "$namespace\\{$token[1]}" : $token[1];
+            if ($gettingClass && $type === T_STRING) {
+                $classes[]    = ltrim("$namespace\\$value", '\\');
                 $gettingClass = false;
             }
+            match (true) {
+                $type !== T_WHITESPACE => $prevTokenType = $type,
+                default                => null
+            };
         }
 
         return $classes;

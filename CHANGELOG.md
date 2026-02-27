@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Fixed
+- `Cacher` and `Writer` tokenizer no longer misidentifies `::class` constant access as class declarations, eliminating false positives like `\null`, `\true`, and method names being parsed as class names.
+- `Cacher` now uses `newInstanceWithoutConstructor()` to trigger metadata compilation, eliminating spurious validation errors from empty-data instantiation.
+- `arrayOfInitialize()` now uses `is_array()` instead of truthy check, correctly handling empty JSON arrays (`[]`).
+
+### Changed
+- `Cacher` error handling split into two tiers: `DefinitionException` prints a yellow warning (design errors the user should fix), other `Throwable` silently skipped (autoload failures, tokenizer noise).
+- `Cacher` and `Writer` success messages moved to their respective CLI entry points (`bin/ib-cacher`, `bin/ib-writer`).
+- `Cacher::scan()` accepts `$silent` parameter to suppress warnings in test contexts.
+- Removed unnecessary `ob_start`/`ob_end_clean` from `Cacher` (no longer needed after instantiation strategy change).
+
 ## [4.0.0-rc.3] - 2026-02-27
 
 ### Fixed

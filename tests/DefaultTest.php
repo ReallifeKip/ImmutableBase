@@ -209,7 +209,7 @@ class DefaultTest extends TestCase
         $initialLevel = ob_get_level();
         ob_start();
         try {
-            (new Cacher())->scan($file);
+            (new Cacher())->scan($file, true);
             if (!file_exists($cacheFile)) {
                 $this->fail('Cacher failed to create cache file.');
             }

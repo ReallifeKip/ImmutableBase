@@ -76,5 +76,7 @@ if (
         )
     )
 ) {
-    Writer::generate($type, "$outputDir/doc.$type");
+    $outputDir = "$outputDir/doc.$type";
+    Writer::generate($type, $outputDir);
+    fwrite(STDERR, "\033[32mDone! Document generated in $outputDir.\033[0m\n");
 }

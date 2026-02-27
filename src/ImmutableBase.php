@@ -426,7 +426,7 @@ abstract readonly class ImmutableBase
                 \is_array($v)                              => $arg::fromArray($v),
                 is_a($arg, SingleValueObject::class, true) => $arg::from($v),
                 \is_object($v)                             => $arg::fromArray((array) $v),
-                \is_string($v)                             => ($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $propertyName, $arg),
+                \is_string($v)                             => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $propertyName, $arg),
                 default                                    => throw new InvalidArrayOfItemException($k, $propertyName, $arg)
             };
         }

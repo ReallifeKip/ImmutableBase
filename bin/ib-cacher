@@ -49,8 +49,8 @@ if ($clear) {
         }
         (new Cacher())->scan($scanDir['scan-dir'] ?? $scanDir['s'] ?? getcwd());
         fwrite(STDERR, "\033[32mImmutableBase Cache generated successfully.\033[0m\n");
-    } catch (Throwable) {
-        fwrite(STDERR, "\033[31mAn error occurred while generating the ImmutableBase Cache.\033[0m\n");
+    } catch (Throwable $e) {
+        fwrite(STDERR, "\033[31mCache generation failed: {$e->getMessage()}\033[0m\n");
         exit(1);
     } finally {
         while (ob_get_level() > $initialLevel) {

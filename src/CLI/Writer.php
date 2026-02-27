@@ -6,6 +6,7 @@ use phpDocumentor\Reflection\DocBlockFactory;
 use phpDocumentor\Reflection\DocBlockFactoryInterface;
 use ReallifeKip\ImmutableBase\CLI\writer\Markdown;
 use ReallifeKip\ImmutableBase\CLI\writer\Mermaid;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
@@ -16,6 +17,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
 use SplFileInfo;
+use Throwable;
 
 /**
  * CLI tool that generates documentation (Mermaid class diagrams or
@@ -87,7 +89,6 @@ class Writer
             self::$type === 'mmd' ? self::buildRelations($classMap, $shortNameCount) : []
         );
         file_put_contents(self::$outputDir, implode("\n", $content), LOCK_EX);
-        echo 'Done! Document generated in ' . self::$outputDir . "\n";
     }
 
     /**
@@ -326,12 +327,13 @@ class Writer
     {
         ob_start();
         try {
-            if (is_subclass_of($class, self::$baseClasses[3])) {
-                $class::from((string) (new ReflectionClass($class))->getProperty('value')->getType() === 'string' ? '' : 1);
-            } elseif (is_subclass_of($class, self::$baseClasses[1]) || is_subclass_of($class, self::$baseClasses[2])) {
-                $class::fromArray([]);
+            $ref = new ReflectionClass($class);
+            ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
+            $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
+        } catch (DefinitionException | Throwable $e) {
+            if ($e instanceof DefinitionException) {
+                fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
             }
-        } catch (\Throwable) {
             // Silently skip classes that cannot be instantiated
         } finally {
             ob_end_clean();
@@ -357,35 +359,34 @@ class Writer
         $class            = '';
         $gettingNamespace = false;
         $gettingClass     = false;
+        $prevTokenType    = null;
         foreach ($tokens as $token) {
-            if (!is_array($token)) {
+            if (!\is_array($token)) {
                 if ($token === ';') {
                     $gettingNamespace = false;
                 }
                 continue;
             }
             [$type, $value] = $token;
-            switch (true) {
-                case $type === T_NAMESPACE:
-                    $gettingNamespace = true;
-                    break;
-                case $type === T_CLASS:
-                    $gettingClass = true;
-                    break;
-                case $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING):
-                    $namespace[] = $value;
-                    break;
-                case $gettingClass && $type === T_STRING:
-                    $class = $value;
-                    break 2;
-                default:
-                    break;
+            match (true) {
+                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON                  => $gettingClass = true,
+                $type === T_NAMESPACE                                                   => $gettingNamespace = true,
+                $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING) => $namespace[] = $value,
+                default                                                                 => null
+            };
+            if ($gettingClass && $type === T_STRING) {
+                $class = $value;
+                break;
             }
+            match (true) {
+                $type !== T_WHITESPACE => $prevTokenType = $type,
+                default                => null
+            };
         }
         if (!$class) {
             return null;
         }
 
-        return implode('', $namespace) . "\\$class";
+        return ltrim(implode('', $namespace) . "\\$class", '\\');
     }
 }
