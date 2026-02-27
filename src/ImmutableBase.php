@@ -410,7 +410,7 @@ abstract readonly class ImmutableBase
      * @param mixed $value The raw input value (array, JSON string, or passthrough for null).
      * @param string $propertyName The owning property name, included in exception messages.
      * @throws InvalidArrayOfItemException
-     * @return array
+     * @return mixed
      */
     private static function arrayOfInitialize(string $arg, mixed $value, string $propertyName): mixed
     {
