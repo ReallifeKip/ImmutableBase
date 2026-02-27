@@ -39,7 +39,6 @@ abstract class ImmutableBaseException extends Exception
             if (!empty(self::$paths)) {
                 $pathString .= ' > ' . join(' > ', array_reverse(self::$paths));
             }
-
             $this->message = "$pathString > $this->message";
             self::$paths   = [];
         }

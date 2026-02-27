@@ -19,11 +19,10 @@ class InvalidCompareTargetException extends DefinitionException
 {
     public function __construct(string $classname, ?string $actualType = null)
     {
-        if ($actualType) {
-            $message = "equals() expects an instance of $classname, $actualType given.";
-        } else {
-            $message = "$classname cannot be compared.";
-        }
-        parent::__construct($message);
+        parent::__construct(
+            $actualType ?
+            "equals() expects an instance of $classname, $actualType given." :
+            "$classname cannot be compared."
+        );
     }
 }

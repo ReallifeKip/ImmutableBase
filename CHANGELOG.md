@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## [4.0.0-rc.2] - 2026-02-27
+
+### Changed
+
+with() no longer reconstructs the entire object. Previously, with() called fromArray() internally, which re-ran the full constructor path — including property resolution and validation — for every property, even those that were not modified. Now, only the changed properties are resolved. Unchanged properties are carried over by reference. This yields a 44–68% performance improvement depending on nesting depth.
+
+### Added
+
+With benchmark suite. A dedicated benchmark file for with() covering flat scalar updates, dot-notation deep paths, bracket notation, chained calls, and batch operations. Run independently via `vendor/bin/phpbench run benchmarks/With.php`.
+
 ## [v4.0.0-rc.1] - 2026-02-26
 
 ### Breaking Changes

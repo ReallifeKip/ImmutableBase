@@ -56,6 +56,7 @@ if (StaticStatus::$cachedMeta === []) {
  * Not intended for direct extension — extend DataTransferObject,
  * ValueObject, or SingleValueObject instead.
  *
+ * @phpstan-import-type Hydrator from Types
  * @phpstan-import-type NamedTypeFromUnion from Types
  * @phpstan-import-type NamedType from Types
  * @phpstan-import-type UnionType from Types
@@ -173,7 +174,6 @@ abstract readonly class ImmutableBase
                     }
                 );
             }
-
             foreach ($props['types'] as &$type) {
                 // Coalesce defaults for cache-sourced metadata which omits runtime-only fields
                 $type['resolver'] = self::buildResolver(
@@ -182,7 +182,6 @@ abstract readonly class ImmutableBase
                     $type['isSVO'] ??= false
                 );
             }
-
             $props['hydrator']                    = self::createHydrator($classname, array_keys($props['types']));
             StaticStatus::$properties[$classname] = $props;
         }
@@ -252,7 +251,6 @@ abstract readonly class ImmutableBase
             'classTreeReversed' => array_reverse($classTree),
             'types'             => [],
         ];
-
         foreach ($ref->getProperties() as $property) {
             $prop['types'][$property->name] = self::scanProperty($property, $prop['skipOnNull']);
         }
@@ -308,7 +306,6 @@ abstract readonly class ImmutableBase
             return null;
         }
         $args = $attr->getArguments();
-
         if (empty($args) || !is_a($args[0], self::class, true)) {
             throw new InvalidArrayOfTargetException();
         }
@@ -336,7 +333,6 @@ abstract readonly class ImmutableBase
     {
         $typename  = $refType->getName();
         $isBuiltin = $refType->isBuiltin();
-
         if ($typename === 'object' || $typename === 'iterable' || (!$isBuiltin && !is_a($typename, self::class, true) && !enum_exists($typename))) {
             throw new InvalidPropertyTypeException($typename);
         }
@@ -373,7 +369,7 @@ abstract readonly class ImmutableBase
                 'string' => (string) $refType,
                 'array'  => array_map(static fn(ReflectionNamedType $type): string => $type->getName(), $unionTypes),
             ],
-            'types'    => array_map(fn(ReflectionNamedType $type) => self::scanNamedType($type, true), $unionTypes),
+            'types'    => array_map(static fn(ReflectionNamedType $type) => self::scanNamedType($type, true), $unionTypes),
         ];
     }
 
@@ -384,7 +380,7 @@ abstract readonly class ImmutableBase
      *
      * @param class-string $className The declaring class; the closure is bound to this scope.
      * @param list<string> $propertyNames Property names to assign during hydration.
-     * @return Closure
+     * @return Hydrator
      */
     private static function createHydrator(string $className, array $propertyNames): Closure
     {
@@ -424,7 +420,6 @@ abstract readonly class ImmutableBase
         if (!\is_array($value) || empty($value)) {
             return $value;
         }
-
         foreach ($value as $k => $v) {
             $values[] = match (true) {
                 $v instanceof $arg                         => $v,
@@ -653,7 +648,6 @@ abstract readonly class ImmutableBase
      */
     private static function toArrayOrValue(mixed $value)
     {
-
         return match (true) {
             !\is_object($value)                 => $value,
             $value instanceof SingleValueObject => $value->value,
@@ -720,7 +714,6 @@ abstract readonly class ImmutableBase
             str_ireplace(['[', ']'], [$separator, ''], $path),
             2
         );
-
         if (!(\is_array($values[$root] ?? null) || ($values[$root] ?? null) instanceof self)) {
             throw new InvalidWithPathException($root);
         }
@@ -907,7 +900,6 @@ abstract readonly class ImmutableBase
         }
         $a = get_object_vars($this);
         $b = get_object_vars($value);
-
         foreach ($a as $name => $av) {
             $bv = $b[$name] ?? null;
             if (
@@ -942,16 +934,14 @@ abstract readonly class ImmutableBase
      */
     final public function with(string | array | object $data, string $separator = '.'): static
     {
-
+        $static = static::class;
         if ($this instanceof SingleValueObject) {
-            return $data instanceof static  ? $data : static::from($data);
+            return $data instanceof $static ? $data : $static::from($data);
         }
-
         $values         = get_object_vars($this);
-        $types          = StaticStatus::$properties[static::class]['types'] ?? [];
+        $types          = StaticStatus::$properties[$static]['types'] ?? [];
         $normalizedData = \is_string($data) ? $this->jsonParser($data, false) : (array) $data;
         foreach ($normalizedData as $path => $value) {
-
             if ($separator !== '' && strpbrk($path, "$separator\[")) {
                 [$root, $rest]             = self::parseDeepPath($path, $separator, $values);
                 $deepUpdates[$root][$rest] = $value;
@@ -959,7 +949,6 @@ abstract readonly class ImmutableBase
                 $values[$path] = self::resolveValue($types[$path], $value, true);
             }
         }
-
         foreach ($deepUpdates ?? [] as $root => $sub) {
             $current       = $values[$root];
             $values[$root] = match (true) {
@@ -967,7 +956,16 @@ abstract readonly class ImmutableBase
                 default                  => self::applyArrayDeepUpdate($current, $sub, $separator)
             };
         }
+        $ref      = StaticStatus::$refs[$static] ??= new ReflectionClass($static);
+        $instance = $ref->newInstanceWithoutConstructor();
+        StaticStatus::$properties[$static]['hydrator']($instance, $values);
+        if (!StaticStatus::$properties[$static]['isDTO']) {
+            /** @var class-string<ValueObject> $static */
+            $cache = StaticStatus::$properties;
+            $class = $cache[$static];
+            $static::enforceValidationRules($instance, $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'], $cache);
+        }
 
-        return static::fromArray($values);
+        return $instance;
     }
 }

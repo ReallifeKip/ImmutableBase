@@ -62,7 +62,6 @@ class Cacher
             }
             $cache[$className] = $entry;
         }
-
         file_put_contents($outputPath, "<?php\n\nreturn " . var_export($cache, true) . ";\n", LOCK_EX);
     }
 
@@ -139,7 +138,6 @@ class Cacher
         $classes          = [];
         $gettingNamespace = false;
         $gettingClass     = false;
-
         foreach ($tokens as $token) {
             switch (true) {
                 case $token === ';':

@@ -34,7 +34,6 @@ abstract readonly class ValueObject extends ImmutableBase
             $class = $cache[static::class];
             $this::enforceValidationRules($this, $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'], $cache);
         });
-
     }
     /**
      * Default validation method.
@@ -57,7 +56,7 @@ abstract readonly class ValueObject extends ImmutableBase
      * @throws ValidationChainException If any validation rule fails (returns false).
      * @return void
      */
-    private static function enforceValidationRules(self | SingleValueObject $object, array $classTree, array $properties)
+    protected static function enforceValidationRules(self | SingleValueObject $object, array $classTree, array $properties)
     {
         $value = null;
         foreach ($classTree as $class) {

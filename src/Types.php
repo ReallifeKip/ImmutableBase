@@ -12,6 +12,8 @@ use ReflectionType;
  * it exists solely to declare reusable type aliases imported by
  * ImmutableBase and ValueObject via @phpstan-import-type.
  *
+ * @phpstan-type Hydrator Closure(ImmutableBase $obj, array $resolved)
+ *
  * @phpstan-type Typename array{
  *     string: string,
  *     array: list<string>,
@@ -53,6 +55,7 @@ use ReflectionType;
  *   skipOnNull: bool,
  *   hasValidate: bool,
  *   validateMethod: ReflectionMethod | false,
+ *   hydrator: Hydrator,
  *   spec: string|null,
  *   classTree: list<class-string>,
  *   classTreeReversed: list<class-string>,

@@ -67,7 +67,6 @@ class Writer
         self::$docblock  = DocBlockFactory::createInstance();
         file_put_contents($outputDir, '', LOCK_EX);
         self::indexDirectory();
-
         $classMap        = self::buildClassMap();
         $shortNameCount  = array_map(static fn($info) => $counts[$info['shortName']] = ($counts[$info['shortName']] ?? 0) + 1, $classMap) ?? [];
         $namespaceGroups = self::buildNamespaceGroups($classMap);
@@ -84,7 +83,6 @@ class Writer
             },
             self::$type === 'mmd' ? self::buildRelations($classMap, $shortNameCount) : []
         );
-
         file_put_contents(self::$outputDir, implode("\n", $content), LOCK_EX);
         echo 'Done! Document generated in ' . self::$outputDir . "\n";
     }

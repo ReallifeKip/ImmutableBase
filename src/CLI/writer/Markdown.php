@@ -63,7 +63,6 @@ abstract class Markdown
         $docs      = self::docParser($ref->getDocComment());
         $specAttr  = $ref->getAttributes(Spec::class)[0] ?? null;
         $spec      = $specAttr ? ($specAttr->getArguments()[0] ?? null) : null;
-
         $content[] = "# {$entry['shortName']} {#{$fullClass}}";
         if ($docs['desc']) {
             $content[] = "> {$docs['desc']}";
@@ -74,13 +73,11 @@ abstract class Markdown
         $content[] = '';
         $content[] = '|name|required|type|description|';
         $content[] = '|--|--|--|--|';
-
         foreach ($types as $type) {
             /** @var ReflectionProperty $propRef */
             $propRef  = $type['propertyRef'] ?? $ref->getProperty($type['propertyName']);
             $propDocs = self::docParser($propRef->getDocComment());
             $required = $type['allowsNull'] ? '' : 'yes';
-
             if ($type['isUnion']) {
                 /** @var UnionType $type */
                 $typeNames = array_map(self::unionTypeNamesParser(...), $type['types']);
@@ -94,10 +91,8 @@ abstract class Markdown
                     $typename  = "[$shortname](#$typename)";
                 }
             }
-
             $content[] = "| {$type['propertyName']} | $required | $typename | " . ($propDocs['desc'] ?: '-') . ' |';
         }
-
         $content[] = '';
         $content[] = '---';
         $content[] = '';
