@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## [v4.0.0] - 2026-03-01
+
+### Breaking Changes
+
+- **Architecture: Attribute annotation replaced by class inheritance.** Objects are now defined by extending `DataTransferObject`, `ValueObject`, or `SingleValueObject` instead of annotating with `#[DataTransferObject]`, `#[ValueObject]`, or `#[Entity]`.
+- **Entity removed.** The `Entity` object type has been removed entirely.
+- **All properties must be `public`.** In v3, `ValueObject` and `Entity` properties were `private` with getter methods. All properties now require `public` visibility, enforced at scan time. Classes should be declared as `readonly class`, which handles immutability at the PHP level.
+- **Exception system rebuilt.** All v3 exceptions have been removed and replaced with a structured hierarchy under `ImmutableBaseException`, categorized into `LogicException` > `DefinitionException` (design errors) and `RuntimeException` > `InitializationException` (input type violations) / `ValidationException` (domain constraint violations). See [README](./README.md) for details.
+- **`object`, `iterable`, and non-IB/non-Enum class types forbidden.** Properties typed as `object`, `iterable`, or unsupported classes (e.g. `DateTime`, `Closure`) now throw `InvalidPropertyTypeException` at scan time.
+
+### Added
+
+- **`SingleValueObject` (SVO).** New object type for semantically meaningful single values. Provides `from()`, `__toString()`, `__invoke()`, and `jsonSerialize()`. Child classes can freely define the type of `$value` via interface + hooked property design.
+- **`equals()`.** Deep structural equality comparison for all ImmutableBase subclasses, with recursive comparison of nested objects and arrays.
+- **`#[Strict]` / `#[Lax]`.** Control whether undeclared input keys are rejected or accepted.
+- **`#[SkipOnNull]` / `#[KeepOnNull]`.** Control whether null-valued properties appear in `toArray()` / `toJson()` output.
+- **`#[Spec]`.** Attach a domain-specific validation message to VO/SVO, retrievable via `ValidationChainException::getSpec()`.
+- **`#[ValidateFromSelf]`.** Reverse the validation chain direction to bottom-up (default is top-down).
+- **Automatic validation chain.** VO and SVO automatically traverse the entire inheritance hierarchy during construction. Each class in the chain is invoked if it defines `validate(): bool`, but defining it is optional -- classes without it are simply skipped without breaking the chain.
+- **Hierarchical error path tracing.** Nested construction errors include the full property path in the exception message (e.g. `OrderDTO > $customer > $email > {error message}`).
+- **`ImmutableBase::strict()`.** Global strict mode.
+- **`ImmutableBase::debug()`.** Debug logging for redundant input keys.
+- **`ImmutableBase::loadCache()`.** Load pre-generated metadata cache to bypass runtime reflection.
+- **CLI: `ib-cacher`.** Metadata cache generator. Supports `--scan-dir` for targeted scanning and `--clear` for cache removal.
+- **CLI: `ib-writer`.** Documentation generator producing Mermaid class diagrams and Markdown property tables.
+- **Benchmark suite.** Dedicated benchmarks for `with()` and hydration covering flat scalar updates, dot-notation deep paths, bracket notation, chained calls, and batch operations.
+
+### Changed
+
+- **`with()` selective resolution.** Only changed properties are resolved; unchanged properties are carried over by reference, yielding a 44–68% performance improvement depending on nesting depth.
+- **`with()` deep path syntax now supports bracket notation** (`items[0].sku`) and custom separators, in addition to existing dot notation.
+
+### Deprecated
+
+- `#[DataTransferObject]` attribute — use `extends DataTransferObject`.
+- `#[ValueObject]` attribute — use `extends ValueObject`.
+- `#[Entity]` attribute — removed entirely.
+
 ## [v3.1.3] - 2025-12-14
 
 ### Changed
@@ -22,6 +60,14 @@
 ### Fixed
 
 - Prevented fatal error caused by invalid enum value assignment in property resolution.
+
+## [v3.2.0-alpha.1] - 2025-10-31
+
+* Added HasValidate interface defining the validate method.
+* Introduced abstract classes SingleValueObject, extending ValueObject and implementing HasValidate.
+* Changed the visibility of the constructInitialize method to final protected.
+* Enhanced walkProperties for better stability by ensuring reflection reinitializes when missing.
+* Added toJson method to support JSON encoding.
 
 ## [v3.1.0] - 2025-10-29
 

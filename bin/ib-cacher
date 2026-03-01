@@ -1,0 +1,60 @@
+#!/usr/bin/env php
+<?php
+
+if (isset($GLOBALS['_composer_autoload_path'])) {
+    require_once $GLOBALS['_composer_autoload_path']; // NOSONAR
+} else {
+    $paths = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../../autoload.php',
+    ];
+
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            require_once $path; // NOSONAR
+            break;
+        }
+    }
+}
+
+if (!class_exists('Composer\Autoload\ClassLoader')) {
+    fwrite(STDERR, "Error: Could not find vendor/autoload.php. Run 'composer install'." . PHP_EOL);
+    exit(1);
+}
+
+use Composer\Autoload\ClassLoader;
+use ReallifeKip\ImmutableBase\CLI\Cacher;
+
+$clear   = getopt('c::', ['clear::']);
+$scanDir = getopt('s::', ['scan-dir::']);
+if ($clear && $scanDir) {
+    fwrite(STDERR, 'Error: Options --clear and --scan-dir cannot be used together.' . PHP_EOL);
+    exit(1);
+}
+$path = dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php';
+if ($clear) {
+    if (file_exists($path)) {
+        unlink($path);
+        fwrite(STDERR, "\033[32mImmutableBase Cache cleared successfully.\033[0m\n");
+    } else {
+        fwrite(STDERR, "\033[31mNo ImmutableBase Cache found to clear.\033[0m\n");
+        exit(1);
+    }
+} else {
+    $initialLevel = ob_get_level();
+    try {
+        ob_start();
+        if (file_exists($path)) {
+            unlink($path);
+        }
+        (new Cacher())->scan($scanDir['scan-dir'] ?? $scanDir['s'] ?? getcwd());
+        fwrite(STDERR, "\033[32mImmutableBase Cache generated successfully.\033[0m\n");
+    } catch (Throwable $e) {
+        fwrite(STDERR, "\033[31mCache generation failed: {$e->getMessage()}\033[0m\n");
+        exit(1);
+    } finally {
+        while (ob_get_level() > $initialLevel) {
+            ob_end_clean();
+        }
+    }
+}

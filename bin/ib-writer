@@ -1,0 +1,82 @@
+#!/usr/bin/env php
+<?php
+
+if (isset($GLOBALS['_composer_autoload_path'])) {
+    require_once $GLOBALS['_composer_autoload_path']; // NOSONAR
+} else {
+    $paths = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../../autoload.php',
+    ];
+
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            require_once $path; // NOSONAR
+            break;
+        }
+    }
+}
+
+if (!class_exists('Composer\Autoload\ClassLoader')) {
+    fwrite(STDERR, "Error: Could not find vendor/autoload.php. Run 'composer install'." . PHP_EOL);
+    exit(1);
+}
+
+$dependencies = [
+    'laravel/prompts'                   => 'Laravel\Prompts\Prompt',
+    'phpdocumentor/reflection-docblock' => 'phpDocumentor\Reflection\DocBlockFactory',
+];
+
+$missing = [];
+foreach ($dependencies as $package => $class) {
+    if (!class_exists($class)) {
+        $missing[] = $package;
+    }
+}
+
+if (!empty($missing)) {
+    $installCmd = 'composer require --dev ' . implode(' ', $missing);
+
+    fwrite(STDERR, "\n\033[31m[Missing Dependencies]\033[0m\n");
+    fwrite(STDERR, "ib-writer requires extra packages to generate documentation.\n\n");
+    fwrite(STDERR, "  \033[32m$installCmd\033[0m\n\n");
+    exit(1);
+}
+
+use function Laravel\Prompts\select;
+use function Laravel\Prompts\suggest;
+use Laravel\Prompts\Prompt;
+use ReallifeKip\ImmutableBase\CLI\Writer;
+
+Prompt::interactive(true);
+
+if (
+    (
+        $type = select(
+            'Please choice what you want to export.',
+            [
+                'mmd' => 'mermaid',
+                'md'  => 'markdown',
+            ],
+        )
+    ) &&
+    (
+        $outputDir = suggest(
+            'Please enter the output dir you want.',
+            fn(string $value)           => match (true) {
+                $value === '' => [],
+                default       => glob($value . '*', GLOB_ONLYDIR) ?: []
+            },
+        default: getcwd() . '/docs',
+            validate: fn(string $value) => match (true) {
+                !is_dir($value)      => 'Directory not found.',
+                !is_writable($value) => 'Directory not writable.',
+                default              => null
+            }
+        )
+    )
+) {
+    $outputDir = "$outputDir/doc.$type";
+    Writer::generate($type, $outputDir);
+    fwrite(STDERR, "\033[32mDone! Document generated in $outputDir.\033[0m\n");
+}
