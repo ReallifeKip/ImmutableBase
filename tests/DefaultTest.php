@@ -6,6 +6,12 @@ use org\bovigo\vfs\vfsStream;
 use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
+use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
+use ReallifeKip\ImmutableBase\Attributes\Lax;
+use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
+use ReallifeKip\ImmutableBase\Attributes\Spec;
+use ReallifeKip\ImmutableBase\Attributes\Strict;
+use ReallifeKip\ImmutableBase\Attributes\ValidateFromSelf;
 use ReallifeKip\ImmutableBase\CLI\Cacher;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
@@ -20,6 +26,7 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueE
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\StaticStatus;
+use ReflectionClass;
 use Tests\DataTransferObjects\DTO;
 use Tests\DataTransferObjects\EmptyArrayOfClassDTO;
 use Tests\DataTransferObjects\ExtraDTO;
@@ -206,7 +213,6 @@ class DefaultTest extends TestCase
         ImmutableBase::strict(true);
         LaxDTO::fromArray([]);
         ImmutableBase::strict(false);
-        new ArrayOf('');
         $nestedDTO = NestedVO::fromArray([
             'nested2' => [
                 'value' => 'svo',
@@ -216,6 +222,24 @@ class DefaultTest extends TestCase
         UnionWithImmutableBaseTypeDTO::fromArray([
             'mixed' => DTO::fromArray($this->array),
         ]);
+
+        foreach (
+            [
+                ArrayOf::class,
+                KeepOnNull::class,
+                Lax::class,
+                SkipOnNull::class,
+                Spec::class,
+                Strict::class,
+                ValidateFromSelf::class,
+            ] as $class
+        ) {
+            $ref         = new ReflectionClass($class);
+            $constructor = $ref->getConstructor();
+            $constructor->setAccessible(true);
+            $instance = $ref->newInstanceWithoutConstructor();
+            $constructor->invoke($instance, '');
+        }
     }
     public function testBasicWithCache()
     {

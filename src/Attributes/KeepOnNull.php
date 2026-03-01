@@ -16,6 +16,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * Has no effect on its own.
  */
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PROPERTY)]
-abstract class KeepOnNull
+final class KeepOnNull
 {
+    private function __construct()
+    {}
 }

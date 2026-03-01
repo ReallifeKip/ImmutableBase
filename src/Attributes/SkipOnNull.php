@@ -12,6 +12,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * Can be overridden per-property with #[KeepOnNull].
  */
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PROPERTY)]
-abstract class SkipOnNull
+final class SkipOnNull
 {
+    private function __construct()
+    {}
 }

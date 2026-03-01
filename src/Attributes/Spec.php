@@ -13,6 +13,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * @example #[Spec('Email must contain exactly one @ symbol')]
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
-abstract class Spec
+final class Spec
 {
+    private function __construct()
+    {}
 }

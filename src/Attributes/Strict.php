@@ -13,6 +13,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * toggle achieves the same effect without requiring an attribute.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
-abstract class Strict
+final class Strict
 {
+    private function __construct()
+    {}
 }

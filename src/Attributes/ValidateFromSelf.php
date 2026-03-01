@@ -13,6 +13,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * be checked before parent validators execute.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
-abstract class ValidateFromSelf
+final class ValidateFromSelf
 {
+    private function __construct()
+    {}
 }

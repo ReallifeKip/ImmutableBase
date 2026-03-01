@@ -12,6 +12,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * Takes precedence over both ImmutableBase::strict(true) and #[Strict].
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
-abstract class Lax
+final class Lax
 {
+    private function __construct()
+    {}
 }

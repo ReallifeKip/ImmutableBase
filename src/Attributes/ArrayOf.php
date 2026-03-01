@@ -16,7 +16,7 @@ namespace ReallifeKip\ImmutableBase\Attributes;
 final class ArrayOf
 {
     /** @param class-string $class */
-    public function __construct(
+    private function __construct(
         public string $class
     ) {}
 }
