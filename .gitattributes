@@ -9,3 +9,5 @@ sonar-project.properties   export-ignore
 phpunit.xml                export-ignore
 phpbench.json              export-ignore
 CHANGELOG.md               export-ignore
+README.md                  export-ignore
+README_TW.md               export-ignore
