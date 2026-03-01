@@ -43,6 +43,7 @@ class Writer
     public static string $outputDir;
     /** @var array<class-string, string> */
     private static array $stereotypes = [];
+    public static bool $silent        = false;
     public static DocBlockFactoryInterface $docblock;
     /** @var array<int, class-string> */
     private static array $baseClasses = [
@@ -78,13 +79,11 @@ class Writer
         $content         = array_merge(
             match (self::$type) {
                 'mmd'   => Mermaid::$header,
-                'md'    => Markdown::$header,
-                default => [],
+                default => Markdown::$header,
             },
             match (self::$type) {
                 'mmd'   => Mermaid::namespaceBlocksGenerate($namespaceGroups, $classMap, $shortNameCount),
-                'md'    => Markdown::namespaceBlocksGenerate($namespaceGroups, $classMap, $shortNameCount),
-                default => []
+                default => Markdown::namespaceBlocksGenerate($namespaceGroups, $classMap, $shortNameCount)
             },
             self::$type === 'mmd' ? self::buildRelations($classMap, $shortNameCount) : []
         );
@@ -162,8 +161,7 @@ class Writer
                 self::displayNameGenerator($fullClass, $classMap, $shortNameCount),
                 self::$stereotypes[$fullClass] ?? null
             ),
-            'md'    => Markdown::contentBlocksGenerate($classMap, $entry),
-            default => []
+            default => Markdown::contentBlocksGenerate($classMap, $entry)
         };
     }
 
@@ -200,12 +198,9 @@ class Writer
      */
     private static function addInheritanceRelation(ReflectionClass $ref, string $name, array $classMap, array $shortNameCount): string | null
     {
-        $parent = $ref->getParentClass();
-        if (!$parent) {
-            return null;
-        }
+        $parent          = $ref->getParentClass();
         $parentClassName = $parent->getName();
-        if (in_array($parentClassName, self::$baseClasses, true) || $parent->isAbstract() || !isset($classMap[$parentClassName])) {
+        if (\in_array($parentClassName, self::$baseClasses, true) || $parent->isAbstract() || !isset($classMap[$parentClassName])) {
             return null;
         }
         $parentName = self::displayNameGenerator($parentClassName, $classMap, $shortNameCount);
@@ -253,8 +248,7 @@ class Writer
                 continue;
             }
             $type                    = $prop->getType();
-            $typeStr                 = $type ? (string) $type : 'mixed';
-            $typeStr                 = ltrim($typeStr, '?');
+            $typeStr                 = ltrim((string) $type, '?');
             $props[$prop->getName()] = $typeStr;
         }
 
@@ -330,7 +324,7 @@ class Writer
             ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
             $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
         } catch (DefinitionException | Throwable $e) {
-            if ($e instanceof DefinitionException) {
+            if ($e instanceof DefinitionException && !self::$silent) {
                 fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
             }
             // Silently skip classes that cannot be instantiated
@@ -366,8 +360,8 @@ class Writer
             }
             [$type, $value] = $token;
             match (true) {
-                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON                  => $gettingClass = true,
-                $type === T_NAMESPACE                                                   => $gettingNamespace = true,
+                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON                  => $gettingClass                 = true,
+                $type === T_NAMESPACE                                                   => $gettingNamespace                                              = true,
                 $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING) => $namespace[] = $value,
                 default                                                                 => null
             };

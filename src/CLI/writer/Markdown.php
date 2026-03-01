@@ -81,7 +81,7 @@ abstract class Markdown
             if ($type['isUnion']) {
                 /** @var UnionType $type */
                 $typeNames = array_map(self::unionTypeNamesParser(...), $type['types']);
-                $typename  = implode('<br>', $typeNames);
+                $typename  = join('<br>', $typeNames);
             } else {
                 /** @var NamedType $type */
                 $typename = $type['typename']['string'];

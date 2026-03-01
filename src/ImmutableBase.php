@@ -735,8 +735,12 @@ abstract readonly class ImmutableBase
     {
         foreach ($subPaths as $path => $value) {
             if (\is_string($path)) {
-                [$index, $rest]         = explode($separator, $path, 2);
-                $grouped[$index][$rest] = $value;
+                $target = explode($separator, $path, 2);
+                if (\count($target) === 2) {
+                    $grouped[$target[0]][$target[1]] = $value;
+                } else {
+                    $grouped[$target[0]] = $value;
+                }
             } else {
                 $current[$path] = $value;
             }
@@ -785,11 +789,11 @@ abstract readonly class ImmutableBase
      */
     final public static function loadCache(): void
     {
-        $path = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php';
+        $path = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
         if (!StaticStatus::$cachedMeta && file_exists($path)) {
             // This file is a machine-generated array from var_export (Cache).
             // Since it's data-as-code and paths are dynamic, PSR-4 'use' is not applicable.
-            StaticStatus::$cachedMeta = require_once $path; // NOSONAR
+            StaticStatus::$cachedMeta = require $path; // NOSONAR
         }
     }
 
@@ -965,6 +969,9 @@ abstract readonly class ImmutableBase
                     $current instanceof self => $current->with($sub, $separator),
                     default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
                 };
+                if ($types[$root]['arrayOf'] !== null) {
+                    $values[$root] = self::resolveValue($types[$root], $values[$root], false);
+                }
             }
             $ref      = StaticStatus::$refs[$static] ??= new ReflectionClass($static);
             $instance = $ref->newInstanceWithoutConstructor();

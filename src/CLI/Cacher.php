@@ -24,6 +24,7 @@ use Throwable;
  */
 class Cacher
 {
+    public static bool $silent      = false;
     protected array $classToFileMap = [];
     /** @var array<int, class-string> */
     private static array $baseClasses = [
@@ -42,14 +43,14 @@ class Cacher
      *
      * @param string $dir Root directory to scan for ImmutableBase subclasses.
      */
-    public function scan(string $dir, bool $silent = false): void
+    public function scan(string $dir): void
     {
-        $outputPath     = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php';
+        $outputPath     = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
         $exclude        = array_flip(['ref', 'validateMethod', 'hydrator']);
         $excludeType    = array_flip(['ref', 'typeRef', 'resolver', 'propertyRef']);
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];
-        $this->indexDirectory($dir, $silent);
+        $this->indexDirectory($dir);
         foreach (StaticStatus::$properties as $className => $props) {
             $entry = array_diff_key($props, $exclude);
             foreach ($entry['types'] as $name => $type) {
@@ -78,7 +79,7 @@ class Cacher
      * @param string $dir Root directory to scan.
      * @return void
      */
-    private function indexDirectory(string $dir, bool $silent): void
+    private function indexDirectory(string $dir): void
     {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
         foreach ($iterator as $file) {
@@ -97,7 +98,6 @@ class Cacher
                 try {
                     if (
                         match (true) {
-                            $class === self::class                         => true,
                             empty(trim($class))                            => true,
                             !class_exists($class)                          => true,
                             (new ReflectionClass($class))->isAbstract()    => true,
@@ -113,7 +113,7 @@ class Cacher
                     $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
                 } catch (DefinitionException | Throwable $e) {
                     match (true) {
-                        $e instanceof DefinitionException && !$silent => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
+                        $e instanceof DefinitionException && !self::$silent => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
                         default => null// Silently skip classes that cannot be instantiated
                     };
                 }
@@ -146,7 +146,7 @@ class Cacher
             }
             [$type, $value] = $token;
             match (true) {
-                $type === T_NAMESPACE                                  => $gettingNamespace = true,
+                $type === T_NAMESPACE                                  => $gettingNamespace                              = true,
                 $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON => $gettingClass = true,
                 default                                                => null
             };

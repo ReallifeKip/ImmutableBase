@@ -5,6 +5,7 @@ namespace Tests;
 use org\bovigo\vfs\vfsStream;
 use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
+use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\CLI\Cacher;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
@@ -29,9 +30,11 @@ use Tests\DataTransferObjects\PrivatePropertyDTO;
 use Tests\DataTransferObjects\ProtectedPropertyDTO;
 use Tests\DataTransferObjects\SkipOnNullDTO;
 use Tests\DataTransferObjects\StrictDTO;
+use Tests\DataTransferObjects\UnionWithImmutableBaseTypeDTO;
 use Tests\SingleValueObjects\SVO3;
 use Tests\SingleValueObjects\SVO;
 use Tests\TestObjects\Enum;
+use Tests\ValueObjects\NestedVO;
 use Tests\ValueObjects\VO;
 
 ImmutableBase::loadCache();
@@ -136,6 +139,7 @@ class DefaultTest extends TestCase
             'enum2'                        => 'two',
             'enum3'                        => Enum::TWO,
             'nullableString'               => null,
+            'dataTransferObjects.0'        => $this->array,
             'dataTransferObjects.0.string' => '1',
             'dataTransferObjects.0.int'    => 1,
             'singleValueObjects[1]'        => 'dto_svo_1',
@@ -148,6 +152,7 @@ class DefaultTest extends TestCase
             'enum2'                        => 'two',
             'enum3'                        => Enum::TWO,
             'nullableString'               => null,
+            'dataTransferObjects/0'        => $this->array,
             'dataTransferObjects/0/string' => '1',
             'dataTransferObjects/0/int'    => 1,
             'singleValueObjects[1]'        => 'dto_svo_1',
@@ -201,6 +206,16 @@ class DefaultTest extends TestCase
         ImmutableBase::strict(true);
         LaxDTO::fromArray([]);
         ImmutableBase::strict(false);
+        new ArrayOf('');
+        $nestedDTO = NestedVO::fromArray([
+            'nested2' => [
+                'value' => 'svo',
+            ],
+        ]);
+        $nestedDTO->with(['nested2.value' => 'svo1']);
+        UnionWithImmutableBaseTypeDTO::fromArray([
+            'mixed' => DTO::fromArray($this->array),
+        ]);
     }
     public function testBasicWithCache()
     {
@@ -215,7 +230,9 @@ class DefaultTest extends TestCase
             }
             StaticStatus::$properties = [];
             StaticStatus::$refs       = [];
-            StaticStatus::$cachedMeta = require $cacheFile; // NOSONAR
+            StaticStatus::$cachePath  = null;
+            StaticStatus::$cachedMeta = [];
+            ImmutableBase::loadCache();
         } finally {
             while (ob_get_level() > $initialLevel) {
                 ob_end_clean();
@@ -284,7 +301,13 @@ class DefaultTest extends TestCase
     {
         $this->expectException(InvalidJsonException::class);
         $this->expectExceptionMessage('Invalid Json string.');
-        DTO::fromJson('');
+        DTO::fromJson('{_}');
+    }
+    public function testInvalidJsonThrowInvalidJsonException2()
+    {
+        $this->expectException(InvalidJsonException::class);
+        $this->expectExceptionMessage('Invalid Json string.');
+        DTO::fromJson('[');
     }
     public function testInvalidArrayForUnionWithoutArrayThrowInvalidTypeException()
     {

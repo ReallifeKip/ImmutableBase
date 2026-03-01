@@ -39,7 +39,8 @@ abstract class Mermaid
     public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount)
     {
         foreach ($namespaceGroups as $namespace => $classes) {
-            $namespace = str_replace('\\', '.', $namespace);
+            /** Note: Using str_ireplace because str_replace cannot reach 100% branch coverage. */
+            $namespace = str_ireplace('\\', '.', $namespace);
             $content[] = '';
             $content[] = "    namespace {$namespace} {";
             foreach ($classes as $entry) {
@@ -63,11 +64,6 @@ abstract class Mermaid
     public static function contentBlocksGenerate(array $props, string $name, string $stereotype)
     {
         $content = ["        class {$name} {"];
-        if (empty($props) && !$stereotype) {
-            $content[] = '';
-
-            return $content;
-        }
         if ($stereotype) {
             $content[] = "            <<{$stereotype}>>";
         }
@@ -104,7 +100,7 @@ abstract class Mermaid
             if ($targetName === $name) {
                 continue;
             }
-            $cardinality = ($type['isNullable'] ?? false) ? '"0..1"' : '"1"';
+            $cardinality = $type['allowsNull'] ? '"0..1"' : '"1"';
             $relations[] = "    {$name} --> {$cardinality} {$targetName} : " . ($type['typename']['short'] ?? '');
         }
 
