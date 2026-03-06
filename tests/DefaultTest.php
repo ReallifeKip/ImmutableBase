@@ -6,6 +6,7 @@ use org\bovigo\vfs\vfsStream;
 use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
@@ -27,6 +28,10 @@ use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationExc
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\StaticStatus;
 use ReflectionClass;
+use Tests\DataTransferObjects\DefaultPriorityDTO;
+use Tests\DataTransferObjects\DefaultValuesBothDTO;
+use Tests\DataTransferObjects\DefaultValuesByAttributeDTO;
+use Tests\DataTransferObjects\DefaultValuesByFunctionDTO;
 use Tests\DataTransferObjects\DTO;
 use Tests\DataTransferObjects\EmptyArrayOfClassDTO;
 use Tests\DataTransferObjects\ExtraDTO;
@@ -85,7 +90,7 @@ class DefaultTest extends TestCase
         ];
         $this->json = json_encode($this->array);
     }
-    public function testBasic()
+    public function testBasic() // NOSONAR
     {
         ImmutableBase::debug(__DIR__);
         $dtoFromArray         = DTO::fromArray($this->array + ['redundant' => '']);
@@ -232,14 +237,103 @@ class DefaultTest extends TestCase
                 Spec::class,
                 Strict::class,
                 ValidateFromSelf::class,
+                Defaults::class,
             ] as $class
         ) {
             $ref         = new ReflectionClass($class);
             $constructor = $ref->getConstructor();
-            $constructor->setAccessible(true);
-            $instance = $ref->newInstanceWithoutConstructor();
+            $constructor->setAccessible(true); // NOSONAR
+            $instance = $ref->newInstanceWithoutConstructor(); // NOSONAR
             $constructor->invoke($instance, '');
         }
+
+        $values = [
+            'bool'  => true,
+            'int'   => 1,
+            'array' => [1, 2, 3],
+        ];
+        $nulls = [
+            'bool'  => null,
+            'int'   => null,
+            'array' => null,
+        ];
+        $defaults = [
+            'bool'  => false,
+            'int'   => 0,
+            'array' => [],
+        ];
+
+        $this->assertEquals(DefaultValuesByFunctionDTO::fromArray($values)->toArray(), $values);
+        $this->assertEquals(DefaultValuesByFunctionDTO::fromArray($nulls)->toArray(), $nulls);
+        $this->assertEquals(DefaultValuesByFunctionDTO::fromArray([])->toArray(), $defaults);
+        $this->assertEquals(DefaultValuesByAttributeDTO::fromArray($values)->toArray(), $values);
+        $this->assertEquals(DefaultValuesByAttributeDTO::fromArray($nulls)->toArray(), $nulls);
+        $this->assertEquals(DefaultValuesByAttributeDTO::fromArray([])->toArray(), $defaults);
+        $this->assertEquals(DefaultValuesBothDTO::fromArray([])->toArray(), $defaults);
+    }
+    public function testDefaultResolutionPriority()
+    {
+        $dto = DefaultPriorityDTO::fromArray([
+            'required' => 'required',
+        ]);
+        $this->assertSame('attribute-default', $dto->fromAttribute);
+        $this->assertSame('function-default', $dto->fromFunction);
+        $this->assertSame('function-overrides-attribute', $dto->both);
+
+        $explicit = DefaultPriorityDTO::fromArray([
+            'fromAttribute' => 'input-attr',
+            'fromFunction'  => 'input-fn',
+            'both'          => 'input-both',
+            'required'      => 'required',
+        ]);
+        $this->assertSame('input-attr', $explicit->fromAttribute);
+        $this->assertSame('input-fn', $explicit->fromFunction);
+        $this->assertSame('input-both', $explicit->both);
+
+        $nullable = DefaultPriorityDTO::fromArray([
+            'fromAttribute' => null,
+            'fromFunction'  => null,
+            'both'          => null,
+            'required'      => 'required',
+        ]);
+        $this->assertNull($nullable->fromAttribute);
+        $this->assertNull($nullable->fromFunction);
+        $this->assertNull($nullable->both);
+    }
+
+    public function testDefaultResolutionPriorityWithCache()
+    {
+        $file         = getcwd() . '/tests';
+        $cacheFile    = 'ib-cache.php';
+        $initialLevel = ob_get_level();
+        ob_start();
+        try {
+            (new Cacher())->scan($file, true);
+            StaticStatus::$properties = [];
+            StaticStatus::$refs       = [];
+            StaticStatus::$cachePath  = null;
+            StaticStatus::$cachedMeta = [];
+            ImmutableBase::loadCache();
+        } finally {
+            while (ob_get_level() > $initialLevel) {
+                ob_end_clean();
+            }
+        }
+
+        try {
+            $this->testDefaultResolutionPriority();
+        } finally {
+            if (file_exists($cacheFile)) {
+                unlink($cacheFile);
+            }
+            StaticStatus::$cachedMeta = [];
+        }
+    }
+    public function testMissingRequiredPropertyAfterDefaultResolutionThrows()
+    {
+        $this->expectException(RequiredValueException::class);
+        $this->expectExceptionMessage("Property 'required' must be present and non-null.");
+        DefaultPriorityDTO::fromArray([]);
     }
     public function testBasicWithCache()
     {
@@ -324,13 +418,13 @@ class DefaultTest extends TestCase
     public function testInvalidJsonThrowInvalidJsonException()
     {
         $this->expectException(InvalidJsonException::class);
-        $this->expectExceptionMessage('Invalid Json string.');
+        $this->expectExceptionMessage('Invalid Json string.'); // NOSONAR
         DTO::fromJson('{_}');
     }
     public function testInvalidJsonThrowInvalidJsonException2()
     {
         $this->expectException(InvalidJsonException::class);
-        $this->expectExceptionMessage('Invalid Json string.');
+        $this->expectExceptionMessage('Invalid Json string.'); // NOSONAR
         DTO::fromJson('[');
     }
     public function testInvalidArrayForUnionWithoutArrayThrowInvalidTypeException()
@@ -354,13 +448,13 @@ class DefaultTest extends TestCase
     public function testPrivatePropertyThrowInvalidPropertyVisibilityException()
     {
         $this->expectException(InvalidVisibilityException::class);
-        $this->expectExceptionMessage('string must be public and readonly.');
+        $this->expectExceptionMessage('\'string\' must be public and readonly.');
         PrivatePropertyDTO::fromArray($this->array);
     }
     public function testProtectedPropertyThrowInvalidPropertyVisibilityException()
     {
         $this->expectException(InvalidVisibilityException::class);
-        $this->expectExceptionMessage('string must be public and readonly.');
+        $this->expectExceptionMessage('\'string\' must be public and readonly.');
         ProtectedPropertyDTO::fromArray($this->array);
     }
     public function testInvalidNamedTypeThrowInvalidTypeException()

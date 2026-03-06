@@ -8,6 +8,7 @@ use BackedEnum;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
@@ -41,10 +42,6 @@ use ReflectionProperty;
 use ReflectionUnionType;
 use UnitEnum;
 
-if (StaticStatus::$cachedMeta === []) {
-    ImmutableBase::loadCache();
-}
-
 /**
  * Core engine for immutable data objects with strict type validation.
  *
@@ -66,6 +63,7 @@ if (StaticStatus::$cachedMeta === []) {
  */
 abstract readonly class ImmutableBase
 {
+    use BasicTrait;
     /**
      * Wraps construction and mutation operations in a depth-tracked error boundary.
      * Maintains a static depth counter to enable hierarchical error path tracking
@@ -104,6 +102,7 @@ abstract readonly class ImmutableBase
     protected function __construct(array $data = [])
     {
         self::executeSafely(function ($static, &$errorPath) use ($data) {
+            $defaults = static::defaultValues();
             if (!isset(StaticStatus::$properties[$static])) {
                 $this::buildPropertyInheritanceChain($this);
             }
@@ -113,18 +112,23 @@ abstract readonly class ImmutableBase
             $class = StaticStatus::$properties[$static];
             if (
                 !$class['isLax'] &&
-                (StaticStatus::$strict || $class['isStrict']) &&
-                $redundant = array_keys(array_diff_key($data, $class['types'])
-                )
+                (StaticStatus::$strict || $class['isStrict']) && $redundant = array_keys(array_diff_key($data, $class['types']))
             ) {
                 throw new StrictViolationException($class['name'], $redundant);
             }
             foreach ($class['types'] as $type) {
                 $name = $errorPath = $type['propertyName'];
-                if (!isset($data[$name]) && !$type['allowsNull']) {
-                    throw new RequiredValueException($name);
+                if (!\array_key_exists($name, $data)) {
+                    $data[$name] = $type['defaults'] ?? match (true) {
+                        \array_key_exists($name, $defaults) => $defaults[$name],
+                        isset($type['propertyRef'])         => self::getAttributeArgument($type['propertyRef'], Defaults::class),
+                        default                             => null
+                    };
                 }
-                $resolved[$name] = self::resolveValue($type, $data[$name] ?? null, false);
+                match (true) {
+                    !isset($data[$name]) && !$type['allowsNull'] => throw new RequiredValueException($name),
+                    default                                      => $resolved[$name] = self::resolveValue($type, $data[$name] ?? null, false)
+                };
             }
             $class['hydrator']($this, $resolved ?? []);
         });
@@ -226,8 +230,8 @@ abstract readonly class ImmutableBase
     {
         [$isDTO, $isVO, $isSVO] = $flags;
         $classname              = $ref->name;
-        if (!$isDTO && ($attr = ($ref->getAttributes(Spec::class)[0] ?? null))) {
-            $spec = $attr->getArguments()[0] ?? '';
+        if (!$isDTO && $ref->getAttributes(Spec::class)) {
+            $spec = self::getAttributeArgument($ref, Spec::class);
             if (!\is_string($spec) || empty($spec = mb_trim($spec))) {
                 throw new InvalidSpecException($classname);
             }
@@ -251,8 +255,24 @@ abstract readonly class ImmutableBase
             'classTreeReversed' => array_reverse($classTree),
             'types'             => [],
         ];
+        $obj      = null;
+        $defaults = [];
+        if (!$ref->isAbstract()) {
+            /** @var ImmutableBase $obj */
+            $obj      = $ref->newInstanceWithoutConstructor();
+            $defaults = $obj::defaultValues();
+        }
         foreach ($ref->getProperties() as $property) {
-            $prop['types'][$property->name] = self::scanProperty($property, $prop['skipOnNull']);
+            $name                 = $property->name;
+            $prop['types'][$name] = self::scanProperty($property, $prop['skipOnNull']);
+            $default              = match (true) {
+                $obj === null                       => null,
+                \array_key_exists($name, $defaults) => $defaults[$name],
+                default                             => self::getAttributeArgument($property, Defaults::class)
+            };
+            if ($default !== null) {
+                $prop['types'][$name]['defaults'] = $default;
+            }
         }
 
         return $prop;
@@ -301,19 +321,16 @@ abstract readonly class ImmutableBase
      */
     private static function resolveArrayOf(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $refType)
     {
-        $attr = $property->getAttributes(ArrayOf::class)[0] ?? null;
-        if ($attr === null) {
-            return null;
-        }
-        $args = $attr->getArguments();
-        if (empty($args) || !is_a($args[0], self::class, true)) {
-            throw new InvalidArrayOfTargetException();
-        }
-        if ($refType instanceof ReflectionUnionType || $refType->getName() !== 'array') {
-            throw new InvalidArrayOfUsageException($property->name, (string) $refType);
-        }
+        $arg = self::getAttributeArgument($property, ArrayOf::class);
 
-        return $args[0];
+        return match (true) {
+            $arg === null                           => null,
+            $arg === []                             => throw new InvalidArrayOfTargetException(),
+            !is_a($arg, self::class, true)          => throw new InvalidArrayOfTargetException(),
+            $refType instanceof ReflectionUnionType => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
+            $refType->getName() !== 'array'         => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
+            default                                 => $arg
+        };
     }
 
     /**
@@ -378,11 +395,11 @@ abstract readonly class ImmutableBase
      * assignment to readonly properties. This bypasses the readonly restriction
      * because the closure operates within the declaring class's scope.
      *
-     * @param class-string $className The declaring class; the closure is bound to this scope.
+     * @param class-string $classname The declaring class; the closure is bound to this scope.
      * @param list<string> $propertyNames Property names to assign during hydration.
      * @return Hydrator
      */
-    private static function createHydrator(string $className, array $propertyNames): Closure
+    private static function createHydrator(string $classname, array $propertyNames): Closure
     {
         return Closure::bind(
             static function (self $obj, array $resolved) use ($propertyNames): void {
@@ -391,7 +408,7 @@ abstract readonly class ImmutableBase
                 }
             },
             null,
-            $className
+            $classname
         );
     }
     /**
@@ -951,7 +968,10 @@ abstract readonly class ImmutableBase
             $values         = get_object_vars($this);
             $props          = StaticStatus::$properties[$static];
             $types          = $props['types'];
-            $normalizedData = \is_string($data) ? self::jsonParser($data, false) : (array) $data;
+            $normalizedData = match (\is_string($data)) {
+                true    => self::jsonParser($data, false),
+                default => (array) $data
+            };
             foreach ($normalizedData as $path => $value) {
                 $errorPath = $path;
                 if ($separator !== '' && strpbrk($path, "$separator\[")) {
@@ -994,4 +1014,35 @@ abstract readonly class ImmutableBase
             throw $e->prependPath($static, $errorPath ?? null);
         }
     }
+    /**
+     * Declares default values for properties that should be populated
+     * when absent from input data. Return an associative array keyed
+     * by property name — only keys matching declared property names
+     * are recognized; unmatched keys are silently ignored.
+     *
+     * Resolution priority during construction:
+     *   1. Explicit input value (fromArray / fromJson)
+     *   2. defaultValues()[$propertyName]
+     *   3. #[Defaults] attribute value
+     *   4. null (if nullable) or RequiredValueException
+     *
+     * Values may be of any type valid for the target property, including
+     * ImmutableBase instances and other objects. However, non-serializable
+     * values (objects, Closures, resources) will be excluded from the
+     * cache file generated by ib-cacher and resolved at runtime instead.
+     *
+     * This method should be purely declarative — avoid side effects,
+     * external I/O, or input-dependent logic. It may be invoked during
+     * both cache generation and runtime construction.
+     *
+     * @return array<property-string, mixed>
+     */
+    public static function defaultValues(): array
+    {
+        return [];
+    }
+}
+
+if (StaticStatus::$cachedMeta === []) {
+    ImmutableBase::loadCache();
 }

@@ -19,8 +19,8 @@ use ReflectionType;
  *     array: list<string>,
  * }
  * @phpstan-type BaseType array{
- *     ref: ReflectionProperty,
- *     propertyRef: ReflectionType,
+ *     ref: ReflectionType,
+ *     propertyRef: ReflectionProperty,
  *     allowsNull: bool,
  *     arrayOf: class-string|null,
  *     propertyName: string,

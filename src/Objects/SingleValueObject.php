@@ -59,4 +59,22 @@ abstract readonly class SingleValueObject extends ValueObject implements Interfa
     {
         return $this->value;
     }
+    /**
+     * SVOs intentionally disable property-level default filling.
+     *
+     * Unlike DTO/VO, a SingleValueObject conceptually has a single
+     * required payload (`$value`) supplied via `from()`. Returning
+     * defaults here could hide missing/invalid input and weaken the
+     * semantic contract of the value object.
+     *
+     * This override remains only to block accidental usage inherited
+     * from ImmutableBase.
+     *
+     * @deprecated SingleValueObject does not support defaultValues(); always pass an explicit value via from().
+     * @return array
+     */
+    final public static function defaultValues(): array
+    {
+        return [];
+    }
 }

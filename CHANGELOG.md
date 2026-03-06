@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## [v4.1.0] - 2026-03-07
+
+### Added
+
+- **`defaultValues()` — Static default value declaration.** Override `defaultValues(): array` to declare fallback values for properties absent from input data. Keys must match declared property names; unmatched keys are silently ignored. Supports any type valid for the target property, including subclasses of ImmutableBase and Enum.
+- **`#[Defaults(value)]` — Attribute-based default value.** Apply `#[Defaults(value)]` to individual properties for constant-expression defaults. Constrained by PHP attribute syntax to scalar values, arrays, and class constants.
+- **Default value resolution priority.** During construction (`fromArray` / `fromJson`), property values are resolved in the following order:
+  1. Explicit input value (including explicit `null`)
+  2. `defaultValues()[$propertyName]`
+  3. `#[Defaults(value)]` attribute value
+  4. `null` (if nullable) or `RequiredValueException`
+- **Explicit `null` is respected.** When a key is present in the input with a `null` value, it is treated as an intentional assignment — default values are not applied.
+- **Cache-aware default values.** `ib-cacher` serializes cacheable default values (scalars, arrays) into the cache file. Non-serializable defaults (objects, Closures) are excluded from the cache with a `[Notice]` warning and resolved at runtime via `defaultValues()` on every construction.
+- **SVO `defaultValues()` sealed.** `SingleValueObject::defaultValues()` is declared `final` and returns an empty array. SVOs require explicit values via `from()` by design.
+
+### Changed
+
+- **`__construct()` uses `array_key_exists()` for default resolution.** Replaces `isset()` to correctly distinguish between "key absent" (apply default) and "key present with `null`" (respect explicit null).
+
 ## [v4.0.0] - 2026-03-01
 
 ### Breaking Changes

@@ -3,6 +3,8 @@
 namespace ReallifeKip\ImmutableBase\CLI;
 
 use Composer\Autoload\ClassLoader;
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
+use ReallifeKip\ImmutableBase\BasicTrait;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
@@ -12,6 +14,7 @@ use ReallifeKip\ImmutableBase\StaticStatus;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
+use ReflectionProperty;
 use Throwable;
 
 /**
@@ -24,6 +27,7 @@ use Throwable;
  */
 class Cacher
 {
+    use BasicTrait;
     public static bool $silent      = false;
     protected array $classToFileMap = [];
     /** @var array<int, class-string> */
@@ -51,7 +55,7 @@ class Cacher
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];
         $this->indexDirectory($dir);
-        foreach (StaticStatus::$properties as $className => $props) {
+        foreach (StaticStatus::$properties as $classname => $props) {
             $entry = array_diff_key($props, $exclude);
             foreach ($entry['types'] as $name => $type) {
                 $clean = array_diff_key($type, $excludeType);
@@ -62,7 +66,7 @@ class Cacher
                 }
                 $entry['types'][$name] = $clean;
             }
-            $cache[$className] = $entry;
+            $cache[$classname] = $entry;
         }
         file_put_contents($outputPath, "<?php\n\nreturn " . var_export($cache, true) . ";\n", LOCK_EX);
     }
@@ -98,23 +102,25 @@ class Cacher
                 try {
                     if (
                         match (true) {
-                            empty(trim($class))                            => true,
-                            !class_exists($class)                          => true,
-                            (new ReflectionClass($class))->isAbstract()    => true,
-                            (new ReflectionClass($class))->isTrait()       => true,
-                            !is_subclass_of($class, self::$baseClasses[0]) => true,
-                            default                                        => false
+                            empty(trim($class))                                => true,
+                            !class_exists($class)                              => true,
+                            ($ref = new ReflectionClass($class))->isAbstract() => true,
+                            $ref->isTrait()                                    => true,
+                            !is_subclass_of($class, self::$baseClasses[0])     => true,
+                            default                                            => false
                         }
                     ) {
                         continue;
                     }
-                    $ref = new ReflectionClass($class);
                     ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
-                    $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
+                    /** @var ImmutableBase $obj */
+                    $obj = $ref->newInstanceWithoutConstructor(); // NOSONAR
+                    $method->invoke(null, $obj);
+                    self::defaultValueValidate($class, $obj::defaultValues(), $ref->getProperties());
                 } catch (DefinitionException | Throwable $e) {
                     match (true) {
-                        $e instanceof DefinitionException && !self::$silent => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
-                        default => null// Silently skip classes that cannot be instantiated
+                        !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
+                        default => null
                     };
                 }
             }
@@ -164,5 +170,62 @@ class Cacher
         }
 
         return $classes;
+    }
+    /**
+     * Validates if a default value is serializable for caching.
+     *
+     * This method ensures that only scalar values, arrays, or nulls are stored
+     * in the pre-generated cache. If an object (such as a nested ValueObject
+     * or a DateTime instance) is detected as a default value, it is flagged
+     * as non-cacheable to prevent serialization errors.
+     *
+     * Non-cacheable defaults will trigger a terminal warning and return null,
+     * forcing the engine to resolve these values at runtime.
+     *
+     * @param class-string $classname The fully-qualified name of the class being scanned.
+     * @param array<property-string, mixed> $defaults
+     * @param ReflectionProperty[] $properties The name of the property being validated.
+     * @return void
+     */
+    private static function defaultValueValidate(string $classname, array $defaults, array $properties)
+    {
+        foreach ($properties as $property) {
+            $name    = $property->name;
+            $default = $defaults[$name] ?? self::getAttributeArgument($property, Defaults::class);
+            if (self::containsNonSerializable($default)) {
+                $type = get_debug_type($default);
+                fwrite(STDERR, "\033[31m[Notice] $classname: '$property' not cacheable ($type). Will resolve at runtime only.\033[0m\n");
+                $default = null;
+            }
+            StaticStatus::$properties[$classname]['types'][$name]['defaults'] = $default;
+        }
+    }
+    /**
+     * Recursively checks whether a value contains any non-serializable
+     * elements (objects, Closures, resources) that would cause var_export()
+     * to fail or produce invalid cache output.
+     *
+     * Scalar values and flat arrays pass immediately. Nested arrays are
+     * walked recursively; the first non-serializable element short-circuits
+     * with true. Circular references are not a concern here — readonly
+     * classes cannot produce self-referencing default value structures.
+     *
+     * @param mixed $value The default value to inspect.
+     * @return bool True if the value contains any non-serializable element.
+     */
+    private static function containsNonSerializable(mixed $value): bool
+    {
+        if (\is_object($value)) {
+            return true;
+        }
+        if (\is_array($value)) {
+            foreach ($value as $v) {
+                if (self::containsNonSerializable($v)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

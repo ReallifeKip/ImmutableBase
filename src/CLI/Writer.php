@@ -172,6 +172,7 @@ class Writer
      */
     private static function buildRelations(array $classMap, array $shortNameCount): array
     {
+        $relations = [];
         foreach ($classMap as $fullClass => $info) {
             $name = self::displayNameGenerator($fullClass, $classMap, $shortNameCount);
             if ($relation = self::addInheritanceRelation($info['ref'], $name, $classMap, $shortNameCount)) {
@@ -182,7 +183,7 @@ class Writer
             }
         }
 
-        return ['', implode("\n", array_unique($relations ?? []))];
+        return ['', implode("\n", array_unique($relations))];
     }
 
     /**

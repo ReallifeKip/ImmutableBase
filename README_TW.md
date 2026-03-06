@@ -51,6 +51,31 @@ class Order extends DataTransferObject
 new Order('2026-01-01', '00:00:00', ...); // 無法直接接受外部傳入的陣列或 JSON 資料，且若未明確指定參數名稱則有順序錯亂的風險
 ```
 
+### 🛡️ 宣告式預設值
+```php
+// 🥳 ImmutableBase 透過 defaultValues() 或 #[Defaults] 自動填充缺少的屬性，優先順序清晰且能正確區分 null。
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+
+    public static function defaultValues(): array
+    {
+        return ['role' => 'admin']; // 優先於 #[Defaults]
+    }
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'admin'
+
+// 🫤 一般常見做法需要手動 null 合併或建構子預設值，無法集中宣告。
+class CreateUserDTO {
+    public function __construct(
+        public readonly string $name,
+        public readonly string $role = 'member', // 無法在子類中覆寫，除非重寫整個建構子
+    ){}
+}
+```
+
 ### 🔧靈活便利的深層更新
 支援直接指定物件深層路徑，拒絕俄羅斯套娃。
 ```php
@@ -355,7 +380,106 @@ $age1->equals($age3);  // false
 
 ---
 
+## 預設值
+
+輸入資料中缺少的屬性可透過兩種互補機制自動填充預設值。
+
+### `defaultValues()` — 動態預設值
+
+覆寫靜態方法，以屬性名稱為索引的關聯陣列宣告預設值，支援任何符合目標屬性型別的值，包含 ImmutableBase 的子物件及 Enum。
+
+```php
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    public string $role;
+    public string $locale;
+
+    public static function defaultValues(): array
+    {
+        return [
+            'role'   => 'member',
+            'locale' => 'en',
+        ];
+    }
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member', locale = 'en'
+```
+
+### `#[Defaults]` — 標註預設值
+
+對個別屬性套用 `#[Defaults(value)]`，以行內常量表達式宣告預設值，受 PHP 標註語法限制，僅支援純量值、陣列及類別常數。
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
+
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+    #[Defaults('en')]
+    public string $locale;
+}
+```
+
+### 解析優先順序
+
+當屬性的 key 不存在於輸入資料中時，預設值依以下順序解析：
+
+1. `defaultValues()[$propertyName]`
+2. `#[Defaults(value)]` 標註值
+3. `null`（若為 nullable）或 `RequiredValueException`
+
+當兩種機制同時為同一屬性定義預設值時，`defaultValues()` 優先。
+
+### 明確傳入 `null` 不等於缺少
+
+當 key 存在於輸入資料中但值為 `null` 時，視為使用者明確指定——**不會**套用預設值。
+
+```php
+readonly class Config extends DataTransferObject
+{
+    public ?string $theme;
+
+    public static function defaultValues(): array
+    {
+        return ['theme' => 'dark'];
+    }
+}
+
+Config::fromArray([]);                   // theme = 'dark'  （key 缺少 → 套用預設值）
+Config::fromArray(['theme' => null]);    // theme = null    （明確傳入 null → 維持 null）
+Config::fromArray(['theme' => 'light']); // theme = 'light' （明確傳入值 → 使用傳入值）
+```
+
+### 快取行為
+
+`ib-cacher` 會將可序列化的預設值（純量、陣列）寫入快取檔案，不可序列化的值（物件、Closure、resource）會以 `[Notice]` 警告排除，改為每次建構時透過 `defaultValues()` 在執行期解析。
+
+### SVO 限制
+
+`SingleValueObject` 不支援預設值，SVO 在設計上要求透過 `from()` 明確傳入值，`defaultValues()` 在 `SingleValueObject` 上以 `final` 封閉，始終回傳空陣列。
+
+---
+
 ## Attributes
+
+### `#[Defaults]` - 屬性預設值
+
+當 key 不存在於輸入資料中時，為單一屬性宣告預設值，受 PHP 標註語法限制，僅支援純量值、陣列及類別常數，若需動態或物件預設值，請改用 `defaultValues()`。
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
+
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
+```
 
 ### `#[ArrayOf]` - 型別陣列
 

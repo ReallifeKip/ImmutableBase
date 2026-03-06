@@ -11,6 +11,9 @@ use Tests\DataTransferObjects\DTO1;
 use Tests\DataTransferObjects\DTO2;
 use Tests\TestObjects\Enum1;
 use Tests\TestObjects\Enum;
+use Tests\ValueObjects\DefaultValuesBothVO;
+use Tests\ValueObjects\DefaultValuesByAttributeVO;
+use Tests\ValueObjects\DefaultValuesByFunctionVO;
 use Tests\ValueObjects\ProfileVO;
 use Tests\ValueObjects\VO;
 
@@ -69,6 +72,30 @@ class ValueObjectTest extends TestCase
 
         $vo5 = VO::fromArray($this->array)->with(['enumMixed' => Enum1::TWO]);
         $this->assertFalse($vo5->equals(VO::fromArray($this->array)));
+
+        $values = [
+            'bool'  => true,
+            'int'   => 1,
+            'array' => [1, 2, 3],
+        ];
+        $nulls = [
+            'bool'  => null,
+            'int'   => null,
+            'array' => null,
+        ];
+        $defaults = [
+            'bool'  => false,
+            'int'   => 0,
+            'array' => [],
+        ];
+
+        $this->assertEquals(DefaultValuesByFunctionVO::fromArray($values)->toArray(), $values);
+        $this->assertEquals(DefaultValuesByFunctionVO::fromArray($nulls)->toArray(), $nulls);
+        $this->assertEquals(DefaultValuesByFunctionVO::fromArray([])->toArray(), $defaults);
+        $this->assertEquals(DefaultValuesByAttributeVO::fromArray($values)->toArray(), $values);
+        $this->assertEquals(DefaultValuesByAttributeVO::fromArray($nulls)->toArray(), $nulls);
+        $this->assertEquals(DefaultValuesByAttributeVO::fromArray([])->toArray(), $defaults);
+        $this->assertEquals(DefaultValuesBothVO::fromArray([])->toArray(), $defaults);
     }
     public function testValidateFailedGetSpec()
     {

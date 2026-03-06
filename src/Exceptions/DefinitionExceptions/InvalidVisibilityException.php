@@ -16,6 +16,6 @@ class InvalidVisibilityException extends DefinitionException
 {
     public function __construct(string $propertyName)
     {
-        parent::__construct("$propertyName must be public and readonly.");
+        parent::__construct("'$propertyName' must be public and readonly.");
     }
 }

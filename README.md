@@ -51,6 +51,31 @@ class Order extends DataTransferObject
 new Order('2026-01-01', '00:00:00', ...); // Cannot directly accept external array or JSON data, and risks argument misordering if parameter names are not explicitly specified
 ```
 
+### 🛡️ Declarative Default Values
+```php
+// 🥳 ImmutableBase fills missing properties from defaultValues() or #[Defaults], with clear priority and null-awareness.
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+
+    public static function defaultValues(): array
+    {
+        return ['role' => 'admin']; // Takes precedence over #[Defaults]
+    }
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'admin'
+
+// 🫤 The conventional approach requires manual null-coalescing or constructor defaults, with no centralized declaration.
+class CreateUserDTO {
+    public function __construct(
+        public readonly string $name,
+        public readonly string $role = 'member', // Cannot be overridden per-class without rewriting constructors
+    ){}
+}
+```
+
 ### 🔧 Flexible Deep Path Updates
 Update deeply nested properties by path - no Russian nesting dolls.
 ```php
@@ -355,7 +380,106 @@ $age1->equals($age3);  // false
 
 ---
 
+## Default Values
+
+Properties absent from input data can be populated with fallback values via two complementary mechanisms.
+
+### `defaultValues()` — Dynamic Defaults
+
+Override the static method to declare default values as an associative array keyed by property name. Supports any type valid for the target property, including subclasses of ImmutableBase and Enum.
+
+```php
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    public string $role;
+    public string $locale;
+
+    public static function defaultValues(): array
+    {
+        return [
+            'role'   => 'member',
+            'locale' => 'en',
+        ];
+    }
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member', locale = 'en'
+```
+
+### `#[Defaults]` — Attribute Defaults
+
+Apply `#[Defaults(value)]` to individual properties for inline constant-expression defaults. Constrained by PHP attribute syntax to scalars, arrays, and class constants.
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
+
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+    #[Defaults('en')]
+    public string $locale;
+}
+```
+
+### Resolution Priority
+
+When a property key is absent from the input data, defaults are resolved in this order:
+
+1. `defaultValues()[$propertyName]`
+2. `#[Defaults(value)]` attribute value
+3. `null` (if nullable) or `RequiredValueException`
+
+When both mechanisms define a value for the same property, `defaultValues()` takes precedence.
+
+### Explicit `null` Is Not Absent
+
+When a key is present in the input with a `null` value, it is treated as an intentional assignment — default values are **not** applied.
+
+```php
+readonly class Config extends DataTransferObject
+{
+    public ?string $theme;
+
+    public static function defaultValues(): array
+    {
+        return ['theme' => 'dark'];
+    }
+}
+
+Config::fromArray([]);                   // theme = 'dark' (key absent → default)
+Config::fromArray(['theme' => null]);    // theme = null   (explicit null → respected)
+Config::fromArray(['theme' => 'light']); // theme = 'light' (explicit value → used)
+```
+
+### Caching Behavior
+
+`ib-cacher` serializes cacheable default values (scalars, arrays) into the cache file. Non-serializable values (objects, Closures, resources) are excluded with a `[Notice]` warning and resolved at runtime via `defaultValues()` instead.
+
+### SVO Restriction
+
+`SingleValueObject` does not support default values. SVOs require an explicit value via `from()` by design. The `defaultValues()` method is sealed (`final`) on `SingleValueObject` and always returns an empty array.
+
+---
+
 ## Attributes
+
+### `#[Defaults]` - Property Default Value
+
+Declares a fallback value for a single property when the key is absent from input data. Constrained by PHP attribute syntax to scalar values, arrays, and class constants. For dynamic or object defaults, use `defaultValues()` instead.
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Defaults;
+
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $name;
+    #[Defaults('member')]
+    public string $role;
+}
+CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
+```
 
 ### `#[ArrayOf]` - Typed Array
 
