@@ -224,6 +224,8 @@ $signUp = SignUpUsersDTO::fromArray([
 ]);
 ```
 
+> 🔗 想快速嘗試？[JSON to ImmutableBase Converter](https://json-to-immutablebase-object-converter.reallife-kip.com) 讓你貼上 JSON 就能快速產出 ImmutableBase 物件！
+
 ---
 
 ## 測試

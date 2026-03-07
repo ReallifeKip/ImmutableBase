@@ -224,6 +224,8 @@ $signUp = SignUpUsersDTO::fromArray([
 ]);
 ```
 
+> 🔗 Want a quick try? [JSON to ImmutableBase Converter](https://json-to-immutablebase-object-converter.reallife-kip.com) lets you paste JSON and generate IB classes instantly!
+
 ---
 
 ## Testing
