@@ -1,6 +1,6 @@
 {
     "name": "reallifekip/immutable-base",
-    "description": "Lightweight abstract classes for building immutable PHP objects.",
+    "description": "Strict immutable DTOs, VOs, and SVOs for PHP 8.4+ with construction-time type validation, deep path mutation, and automatic validation chaining.",
     "type": "library",
     "license": "MIT",
     "autoload": {
@@ -28,18 +28,21 @@
         "php",
         "svo",
         "dto",
+        "ddd",
+        "php84",
         "toJson",
         "toArray",
-        "utility",
+        "readonly",
         "immutable",
         "reflection",
+        "validation",
         "type-safety",
         "value-object",
         "serialization",
-        "normalization",
         "array-conversion",
         "single-value-object",
-        "data-transfer-object"
+        "data-transfer-object",
+        "domain-driven-design"
     ],
     "require-dev": {
         "phpunit/phpunit": "^10",
