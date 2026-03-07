@@ -69,7 +69,7 @@ class WriterTest extends TestCase
 
         $this->assertFileExists($outputFile);
         $content = file_get_contents($outputFile);
-        $this->assertStringContainsString('|name|required|type|description|', $content);
+        $this->assertStringContainsString('|name|required|type|default|description|', $content);
     }
 
     public function testMermaidContainsClassBlocks(): void
@@ -111,7 +111,7 @@ class WriterTest extends TestCase
         Writer::generate('md', $outputFile);
 
         $content = file_get_contents($outputFile);
-        $this->assertStringContainsString('|name|required|type|description|', $content);
+        $this->assertStringContainsString('|name|required|type|default|description|', $content);
         $this->assertStringContainsString('|--|--|--|--|', $content);
     }
 
