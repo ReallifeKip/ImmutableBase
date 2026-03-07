@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [4.1.1] - 2025-03-07
+
+### Fixed
+#### ib-writer
+- Property tables now include a `default` column displaying default
+  values from `#[Defaults]` attributes and `defaultValues()` overrides
+- Enum types referenced as property types now generate their own
+  documentation blocks with case listings and backing values
+- BackedEnum defaults display the backing value; UnitEnum defaults
+  display the case name; dynamic defaults from `defaultValues()`
+  display as `(dynamic)`
+
 ## [v4.1.0] - 2026-03-07
 
 ### Added

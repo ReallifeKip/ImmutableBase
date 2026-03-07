@@ -4,6 +4,7 @@ namespace ReallifeKip\ImmutableBase\CLI\writer;
 
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\CLI\Writer;
+use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Types;
 use ReflectionProperty;
 
@@ -25,6 +26,7 @@ use ReflectionProperty;
 abstract class Markdown
 {
     public static array $header = [];
+    public static array $enums  = [];
     /**
      * Iterates all namespace groups and delegates each class to
      * Writer::buildClassBlock() for Markdown table generation.
@@ -42,6 +44,7 @@ abstract class Markdown
                 $content = array_merge($content ?? [], Writer::buildClassBlock($entry, $classMap, $shortNameCount));
             }
         }
+        $content = array_merge($content ?? [], self::enumBlocksGenerate());
 
         return $content;
     }
@@ -71,8 +74,8 @@ abstract class Markdown
             $content[] = $spec;
         }
         $content[] = '';
-        $content[] = '|name|required|type|description|';
-        $content[] = '|--|--|--|--|';
+        $content[] = '|name|required|type|default|description|';
+        $content[] = '|--|--|--|--|--|';
         foreach ($types as $type) {
             /** @var ReflectionProperty $propRef */
             $propRef  = $type['propertyRef'] ?? $ref->getProperty($type['propertyName']);
@@ -90,8 +93,26 @@ abstract class Markdown
                     $shortname = end($shortname);
                     $typename  = "[$shortname](#$typename)";
                 }
+                if (enum_exists($type['typename']['string'])) {
+                    self::$enums[$type['typename']['string']] = true;
+                }
             }
-            $content[] = "| {$type['propertyName']} | $required | $typename | " . ($propDocs['desc'] ?: '-') . ' |';
+            $desc    = $propDocs['desc'] ?: '-';
+            $default = '-';
+            if (isset($type['defaults'])) {
+                $default = $type['defaults'];
+                $default = match (true) {
+                    $default instanceof \BackedEnum   => (string) $default->value,
+                    $default instanceof \UnitEnum     => $default->name,
+                    $default instanceof ImmutableBase => $default::class,
+                    is_callable($default)             => '(dynamic)',
+                    \is_array($default)               => json_encode($default),
+                    $default === null                 => 'null',
+                    $default === false                => 'false',
+                    default                           => (string) $default
+                };
+            }
+            $content[] = "| {$type['propertyName']} | $required | $typename | $default | $desc |";
         }
         $content[] = '';
         $content[] = '---';
@@ -136,9 +157,57 @@ abstract class Markdown
             $shortname = explode('\\', $typename);
             $shortname = end($shortname);
 
+            if (enum_exists($typename)) {
+                self::$enums[$typename] = true;
+            }
+
             return "[$shortname](#$typename)";
         }
 
         return $typename;
+    }
+    /**
+     * Generates Markdown documentation blocks for all Enum classes
+     * referenced by ImmutableBase property types. Only Enums actually
+     * used as property types are included. BackedEnum cases display
+     * both name and backing value; UnitEnum cases display name only.
+     *
+     * @return list<string>
+     */
+    public static function enumBlocksGenerate(): array
+    {
+        $content = [];
+
+        foreach (self::$enums as $enumClass => $_) {
+            $ref       = new \ReflectionEnum($enumClass);
+            $shortName = $ref->getShortName();
+            $isBacked  = $ref->isBacked();
+
+            $content[] = "# {$shortName} {#{$enumClass}}";
+            $content[] = '';
+
+            if ($isBacked) {
+                $backingType = $ref->getBackingType()->getName();
+                $content[]   = "| case | value ({$backingType}) |";
+                $content[]   = '|--|--|';
+                foreach ($ref->getCases() as $case) {
+                    /** @var \ReflectionEnumBackedCase $case */
+                    $value     = $case->getBackingValue();
+                    $content[] = "| {$case->getName()} | {$value} |";
+                }
+            } else {
+                $content[] = '| case |';
+                $content[] = '|--|';
+                foreach ($ref->getCases() as $case) {
+                    $content[] = "| {$case->getName()} |";
+                }
+            }
+
+            $content[] = '';
+            $content[] = '---';
+            $content[] = '';
+        }
+
+        return $content;
     }
 }
