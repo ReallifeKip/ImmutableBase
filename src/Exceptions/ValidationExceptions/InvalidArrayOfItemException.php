@@ -8,16 +8,20 @@ use ReallifeKip\ImmutableBase\Exceptions\ValidationException;
 
 /**
  * Thrown when an element within an #[ArrayOf] array cannot be resolved
- * to the declared target class (e.g. an integer where a DTO is expected).
+ * to the declared target type — either an ImmutableBase subclass or a
+ * Native scalar type (e.g. an integer where a DTO or string is expected).
  *
  * @param int $index The zero-based index of the invalid element.
- * @param string $propertyName The property containing the array.
- * @param string $targetClassname The expected ImmutableBase class for each element.
+ * @param string $targetType The expected ImmutableBase class FQCN or Native scalar type name.
  */
 class InvalidArrayOfItemException extends ValidationException
 {
-    public function __construct(int $index, string $propertyName, string $targetClassname)
+    public function __construct(int $index, string $targetType)
     {
-        parent::__construct("Item at index $index is not or cannot be initialized as $targetClassname.");
+        parent::__construct(
+            class_exists($targetType) ?
+            "Item at index $index is not or cannot be initialized as $targetType." :
+            "Item at index $index is not of type $targetType."
+        );
     }
 }

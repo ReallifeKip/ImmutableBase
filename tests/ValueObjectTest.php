@@ -6,11 +6,13 @@ namespace Tests;
 
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
+use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
 use Tests\DataTransferObjects\DTO1;
 use Tests\DataTransferObjects\DTO2;
 use Tests\TestObjects\Enum1;
 use Tests\TestObjects\Enum;
+use Tests\ValueObjects\ArrayOfVO;
 use Tests\ValueObjects\DefaultValuesBothVO;
 use Tests\ValueObjects\DefaultValuesByAttributeVO;
 use Tests\ValueObjects\DefaultValuesByFunctionVO;
@@ -22,6 +24,12 @@ class ValueObjectTest extends TestCase
     private array $array;
     private string $json;
     private array $profile;
+    private array $arrayOfData = [
+        'strings' => ['1', '2', '3'],
+        'ints'    => [1, 2, 3],
+        'floats'  => [1.1, 2.2, 3.3],
+        'bools'   => [true, true, false, false],
+    ];
     public function setup(): void
     {
         $this->array = [
@@ -29,7 +37,6 @@ class ValueObjectTest extends TestCase
             'int'                 => 1,
             'float'               => 1.1,
             'bool'                => true,
-            'null'                => null,
             'array'               => [1, 2, 3],
             'emptyArray'          => [],
             'union'               => 'string',
@@ -96,6 +103,8 @@ class ValueObjectTest extends TestCase
         $this->assertEquals(DefaultValuesByAttributeVO::fromArray($nulls)->toArray(), $nulls);
         $this->assertEquals(DefaultValuesByAttributeVO::fromArray([])->toArray(), $defaults);
         $this->assertEquals(DefaultValuesBothVO::fromArray([])->toArray(), $defaults);
+
+        $this->assertEquals(ArrayOfVO::fromArray($this->arrayOfData)->toArray(), $this->arrayOfData);
     }
     public function testValidateFailedGetSpec()
     {
@@ -121,5 +130,25 @@ class ValueObjectTest extends TestCase
     {
         $vo = VO::fromArray($this->array)->with(['unionClasses' => DTO2::fromArray(['string2' => 'string2'])]);
         $this->assertFalse($vo->equals(VO::fromArray($this->array)));
+    }
+    public function testInvalidArrayOfNativeStringException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['strings' => [1]]));
+    }
+    public function testInvalidArrayOfNativeIntException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['ints' => ['1']]));
+    }
+    public function testInvalidArrayOfNativeFloatException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['strings' => [['nested']]]));
+    }
+    public function testInvalidArrayOfNativeBoolException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
     }
 }

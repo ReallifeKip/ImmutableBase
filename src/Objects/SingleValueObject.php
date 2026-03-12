@@ -17,9 +17,7 @@ use ReallifeKip\ImmutableBase\Objects\ValueObject;
  *
  * Construction is exclusively through the static from() factory method.
  *
- * ISSUE: https://github.com/bmewburn/vscode-intelephense/issues/3528
- * Remove once the Intelephense bug is fixed upstream
- * @property string $value
+ * @property string|int|float|bool $value
  */
 abstract readonly class SingleValueObject extends ValueObject implements InterfacesSingleValueObject, JsonSerializable
 {
@@ -33,7 +31,7 @@ abstract readonly class SingleValueObject extends ValueObject implements Interfa
         return new static($value);
     }
     /**
-     * Returns the string representation of the internal value.
+     * Returns the string-cast representation of the internal value.
      * @return string
      */
     final public function __toString(): string
@@ -42,9 +40,9 @@ abstract readonly class SingleValueObject extends ValueObject implements Interfa
     }
     /**
      * Allows the object to be called as a function, returning its internal value.
-     * @return mixed The internal 'value' property.
+     * @return string|int|float|bool The wrapped scalar value.
      */
-    final public function __invoke()
+    final public function __invoke(): string | int | float | bool
     {
         return $this->value;
     }
@@ -53,9 +51,9 @@ abstract readonly class SingleValueObject extends ValueObject implements Interfa
      * scalar rather than an object structure, ensuring SVOs produce
      * clean JSON output (e.g. "alice@example.com" instead of {"value":"alice@example.com"}).
      *
-     * @return mixed
+     * @return string|int|float|bool
      */
-    final public function jsonSerialize(): mixed
+    final public function jsonSerialize(): string | int | float | bool
     {
         return $this->value;
     }

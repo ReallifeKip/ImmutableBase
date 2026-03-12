@@ -25,9 +25,9 @@ trait BasicTrait
      * @param ReflectionClass|ReflectionProperty $target Reflection target to inspect.
      * @param class-string $name Fully-qualified attribute class name.
      * @param bool $getFirst Whether to return only the first argument.
-     * @return mixed|null
+     * @return mixed
      */
-    public static function getAttributeArgument(ReflectionClass | ReflectionProperty $target, string $name, bool $getFirst = true)
+    public static function getAttributeArgument(ReflectionClass | ReflectionProperty $target, string $name, bool $getFirst = true): mixed
     {
         if ($value = $target->getAttributes($name)) {
             $value = $value[0];

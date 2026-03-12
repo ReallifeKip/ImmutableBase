@@ -29,7 +29,7 @@ class WriterTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up generated files
-        foreach (['mmd', 'md'] as $ext) {
+        foreach (['mmd', 'md', 'ts'] as $ext) {
             $file = "{$this->outputDir}/doc.$ext";
             if (file_exists($file)) {
                 unlink($file);
@@ -50,12 +50,27 @@ class WriterTest extends TestCase
         Writer::$silent = true;
         $this->assertFileExists($outputFile);
     }
+    public function testGenerateTypescriptOutput(): void
+    {
+        $outputFile = "{$this->outputDir}/doc.ts";
+        Writer::generate('ts', $outputFile);
+
+        $this->assertFileExists($outputFile);
+        $this->assertFileExists($outputFile);
+        $content = file_get_contents($outputFile);
+        $this->assertStringContainsString('declare namespace', $content);
+        $this->assertStringContainsString('interface', $content);
+        $this->assertStringContainsString('type', $content);
+        $this->assertStringContainsString('enum', $content);
+    }
 
     public function testGenerateMermaidOutput(): void
     {
         $outputFile = "{$this->outputDir}/doc.mmd";
         Writer::generate('mmd', $outputFile);
 
+        $this->assertFileExists($outputFile);
+        Writer::$silent = true;
         $this->assertFileExists($outputFile);
         $content = file_get_contents($outputFile);
         $this->assertStringContainsString('classDiagram', $content);

@@ -1,5 +1,7 @@
 <?php
 
+declare (strict_types = 1);
+
 namespace ReallifeKip\ImmutableBase\CLI\writer;
 
 use ReallifeKip\ImmutableBase\Attributes\Spec;
@@ -37,7 +39,7 @@ abstract class Markdown
      * @param list<int> $shortNameCount
      * @return list<string>
      */
-    public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount)
+    public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount): array
     {
         foreach ($namespaceGroups as $classes) {
             foreach ($classes as $entry) {
@@ -58,7 +60,7 @@ abstract class Markdown
      * @param NamespaceGroup $entry
      * @return list<string>
      */
-    public static function contentBlocksGenerate(array $classMap, array $entry)
+    public static function contentBlocksGenerate(array $classMap, array $entry): array
     {
         $fullClass = $entry['fullClass'];
         $ref       = $entry['ref'];

@@ -1,5 +1,7 @@
 <?php
 
+declare (strict_types = 1);
+
 namespace ReallifeKip\ImmutableBase\CLI;
 
 use Composer\Autoload\ClassLoader;
@@ -132,7 +134,7 @@ class Cacher
      * its source. Resolves namespace and class name from T_NAMESPACE and
      * T_CLASS tokens respectively.
      *
-     * @param string $path Absolute file path.
+     * @param string $content Full PHP file content.
      * @return list<class-string>
      */
     private static function parseFullClassname(string $content): array
@@ -187,7 +189,7 @@ class Cacher
      * @param ReflectionProperty[] $properties The name of the property being validated.
      * @return void
      */
-    private static function defaultValueValidate(string $classname, array $defaults, array $properties)
+    private static function defaultValueValidate(string $classname, array $defaults, array $properties): void
     {
         foreach ($properties as $property) {
             $name    = $property->name;

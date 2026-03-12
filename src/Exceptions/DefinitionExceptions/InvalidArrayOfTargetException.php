@@ -7,8 +7,9 @@ namespace ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 
 /**
- * Thrown when an #[ArrayOf] attribute specifies a target class that is
- * not a subclass of ImmutableBase (i.e. not a DTO, VO, or SVO).
+ * Thrown when an #[ArrayOf] attribute specifies a target that is neither
+ * a subclass of ImmutableBase (DTO, VO, or SVO) nor a Native enum case
+ * for primitive typed arrays.
  */
 class InvalidArrayOfTargetException extends DefinitionException
 {

@@ -38,7 +38,7 @@ readonly class Order extends DataTransferObject
     public string $date;
     public string $time;
 }
-Order::fromArray($data); // $data 可以是陣列、JSON
+Order::fromArray($data); // $data 必須是陣列（JSON 字串請改用 fromJson()）
 
 // 🫤 一般常見做法需要重複撰寫建構子，也常因順序不正確而無法建構，且無法直接使用外部傳入資料進行建構。
 class Order extends DataTransferObject
@@ -115,7 +115,7 @@ SomeException: {錯誤訊息}
 
 ### 📃文件即代碼，代碼即文件
 
-🥳 ImmutableBase 可以透過 `vendor/bin/ib-writer` 對專案進行 ImmutableBase 子類物件掃描，力求避免文件與代碼不一致、需要花費額外人力的窘境，快速產出 Mermaid、Markdown 等技術文件。
+🥳 ImmutableBase 可以透過 `vendor/bin/ib-writer` 對專案進行 ImmutableBase 子類物件掃描，力求避免文件與代碼不一致、需要花費額外人力的窘境，快速產出 Mermaid 類別圖、Markdown 屬性表及 TypeScript 型別宣告等技術文件。
 
 🫤 一般常見做法無法保障代碼與文件一致。
 
@@ -298,7 +298,7 @@ readonly class ValidAge extends SingleValueObject
 ```php
 $age = ValidAge::from(18);
 
-echo $age;          // 18（透過 __toString，僅 $value 為字串時可用）
+echo $age;          // 18（透過 __toString，會將 $value 轉為字串）
 echo $age();        // 18（透過 __invoke）
 echo $age->value;   // 18
 ```
@@ -485,16 +485,31 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 ### `#[ArrayOf]` - 型別陣列
 
-將陣列屬性標記為 ImmutableBase 實例的型別集合。每個元素會自動從陣列、JSON 字串或已建構物件進行實例化，目標類必須是 DTO、VO 或 SVO 的子類。
+將陣列屬性標記為 ImmutableBase 實例或純量值的型別集合。每個元素會自動驗證或實例化。目標必須是 DTO、VO 或 SVO 的子類，或純量陣列可使用 `Native` enum case。
+
+**純量型別陣列**可使用 `Native` enum case 取代類別名稱：
+
+| Case             | PHP 型別 |
+| ---------------- | -------- |
+| `Native::string` | `string` |
+| `Native::int`    | `int`    |
+| `Native::float`  | `float`  |
+| `Native::bool`   | `bool`   |
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 
 readonly class SignUpUsersDTO extends DataTransferObject
 {
+    // ImmutableBase 子類
     #[ArrayOf(User::class)]
     public array $users;
-    public int $userCount;
+
+    // 純量型別陣列
+    #[ArrayOf(Native::string)]
+    public array $tags;
+    #[ArrayOf(Native::int)]
+    public array $scores;
 }
 ```
 
@@ -637,7 +652,7 @@ vendor/bin/ib-cacher --clear
 
 ### `writer` - 文件產生器
 
-為專案所有 ImmutableBase 子類物件產生文件，可產生 Mermaid 類別圖及 Markdown 屬性表。
+為專案所有 ImmutableBase 子類物件產生文件，可產生 Mermaid 類別圖、Markdown 屬性表及 TypeScript 型別宣告。
 
 ```bash
 vendor/bin/ib-writer
@@ -720,7 +735,7 @@ vendor/bin/ib-writer
 ## 注意事項
 
 1. 所有子類屬性必須為 public；由於 ImmutableBase 為 readonly class，整條繼承鏈在 PHP 語言層級也必須是 readonly。
-2. 此體系子物件所有屬性型別禁止設為：`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類，如：`DateTime`、`Closure`。
+2. 此體系子物件所有屬性型別禁止設為：`null`、`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類，如：`DateTime`、`Closure`。
 3. Enum 屬性接受 case 名稱（`"HIGH"`）或 backed 值（`3`），解析後的屬性值始終為 Enum 實例。
 4. 支援 `mixed` 型別，但值不會被進行驗證。
 

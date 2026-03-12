@@ -36,9 +36,10 @@ class Attack2Test extends TestCase
 
         $this->baseArray = [
             'string'              => 'string',
-            'int'                 => 1, 'float'    => 1.1,
+            'int'                 => 1,
+            'float'               => 1.1,
             'bool'                => true,
-            'null'                => null, 'array' => [1, 2, 3],
+            'array'               => [1, 2, 3],
             'emptyArray'          => [],
             'union'               => 'string',
             'unionWithoutArray'   => 'string',
@@ -377,18 +378,6 @@ class Attack2Test extends TestCase
             'note'     => null,
         ]);
         $this->assertCount(500, $order->items);
-    }
-
-    public function testNullTypePropertyAcceptsNull(): void
-    {
-        $dto = DTO::fromArray($this->baseArray);
-        $this->assertNull($dto->null);
-    }
-
-    public function testNullTypePropertyRejectsNonNull(): void
-    {
-        $this->expectException(ImmutableBaseException::class);
-        DTO::fromArray(array_merge($this->baseArray, ['null' => 'not null']));
     }
 
     public function testDoubleFromArrayProducesSameResult(): void

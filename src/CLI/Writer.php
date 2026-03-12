@@ -1,11 +1,14 @@
 <?php
 
+declare (strict_types = 1);
+
 namespace ReallifeKip\ImmutableBase\CLI;
 
 use phpDocumentor\Reflection\DocBlockFactory;
 use phpDocumentor\Reflection\DocBlockFactoryInterface;
 use ReallifeKip\ImmutableBase\CLI\writer\Markdown;
 use ReallifeKip\ImmutableBase\CLI\writer\Mermaid;
+use ReallifeKip\ImmutableBase\CLI\writer\Typescript;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
@@ -20,14 +23,14 @@ use SplFileInfo;
 use Throwable;
 
 /**
- * CLI tool that generates documentation (Mermaid class diagrams or
- * Markdown property tables) for all ImmutableBase subclasses in the
- * current working directory.
+ * CLI tool that generates documentation (Mermaid class diagrams,
+ * Markdown property tables, or TypeScript declarations) for all
+ * ImmutableBase subclasses in the current working directory.
  *
- * Delegates rendering to Mermaid or Markdown strategy classes. Output
- * format is selected via CLI argument or interactive prompt.
+ * Delegates rendering to Mermaid, Markdown, or Typescript strategy
+ * classes. Output format is selected via CLI argument or interactive prompt.
  *
- * Usage: php writer [mmd|md] [output-directory]
+ * Usage: php writer [mmd|md|ts] [output-directory]
  *
  * @phpstan-import-type ClassMap from Types
  * @phpstan-import-type NamespaceGroup from Types
@@ -79,15 +82,18 @@ class Writer
         $content         = array_merge(
             match (self::$type) {
                 'mmd'   => Mermaid::$header,
+                'ts'    => Typescript::$header,
                 default => Markdown::$header,
             },
             match (self::$type) {
                 'mmd'   => Mermaid::namespaceBlocksGenerate($namespaceGroups, $classMap, $shortNameCount),
+                'ts'    => Typescript::contentGenerate($classMap),
                 default => Markdown::namespaceBlocksGenerate($namespaceGroups, $classMap, $shortNameCount)
             },
             self::$type === 'mmd' ? self::buildRelations($classMap, $shortNameCount) : []
         );
-        file_put_contents(self::$outputDir, implode("\n", $content), LOCK_EX);
+        $content = implode("\n", $content);
+        file_put_contents(self::$outputDir, $content, LOCK_EX);
     }
 
     /**

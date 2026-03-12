@@ -15,6 +15,7 @@ use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\Attributes\Strict;
 use ReallifeKip\ImmutableBase\Attributes\ValidateFromSelf;
+use ReallifeKip\ImmutableBase\Enums\Native;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
@@ -97,7 +98,7 @@ abstract readonly class ImmutableBase
      * Enforces strict mode rejection of redundant keys when enabled globally
      * or via class-level #[Strict] attribute (unless overridden by #[Lax]).
      *
-     * @param array $data Associative array keyed by property name. Missing nullable keys default to null.
+     * @param array<string, mixed> $data Associative input keyed by property name. Missing nullable keys default to null.
      */
     protected function __construct(array $data = [])
     {
@@ -210,7 +211,7 @@ abstract readonly class ImmutableBase
         return match (true) {
             $tryJson && self::jsonLike($value) => self::valueDecide($type, self::jsonParser($value)),
             $value === null                    => $type['allowsNull'] ? null : throw new RequiredValueException($type['propertyName'] ?? $type['typename']['string']),
-            ($arg = $type['arrayOf']) !== null => self::arrayOfInitialize($arg, $value, $type['propertyName']),
+            ($arg = $type['arrayOf']) !== null => self::arrayOfInitialize($arg, $value),
             default                            => $type['resolver']($value)
         };
     }
@@ -317,15 +318,16 @@ abstract readonly class ImmutableBase
      * @param ReflectionNamedType|ReflectionUnionType $refType The property's declared type, used to enforce the `array` constraint.
      * @throws InvalidArrayOfTargetException
      * @throws InvalidArrayOfUsageException
-     * @return null|class-string
+     * @return non-empty-string|null
      */
-    private static function resolveArrayOf(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $refType)
+    private static function resolveArrayOf(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $refType): ?string
     {
         $arg = self::getAttributeArgument($property, ArrayOf::class);
 
         return match (true) {
             $arg === null                           => null,
             $arg === []                             => throw new InvalidArrayOfTargetException(),
+            $arg instanceof Native                  => $arg->value,
             !is_a($arg, self::class, true)          => throw new InvalidArrayOfTargetException(),
             $refType instanceof ReflectionUnionType => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
             $refType->getName() !== 'array'         => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
@@ -335,8 +337,9 @@ abstract readonly class ImmutableBase
 
     /**
      * Scans a single named type, enforcing the forbidden type rule:
-     * `object`, non-ImmutableBase classes, and non-enum classes are rejected at
-     * definition time via InvalidPropertyTypeException.
+     * `object`, `iterable`, non-ImmutableBase classes, and non-enum classes are rejected at
+     * definition time via InvalidPropertyTypeException. Standalone `null` passes through
+     * here (as a builtin) and is rejected later in buildResolver().
      *
      * When called for a top-level property ($fromUnion=false), also resolves
      * whether the type is an SVO for use by buildResolver(). Union members
@@ -423,13 +426,12 @@ abstract readonly class ImmutableBase
      * Empty arrays and non-array values are returned as-is to allow upstream
      * validation (e.g. nullable ArrayOf accepting null).
      *
-     * @param class-string $arg The target ImmutableBase subclass declared in #[ArrayOf].
+     * @param non-empty-string $arg The #[ArrayOf] target type (ImmutableBase subclass FQCN or Native::* scalar name).
      * @param mixed $value The raw input value (array, JSON string, or passthrough for null).
-     * @param string $propertyName The owning property name, included in exception messages.
      * @throws InvalidArrayOfItemException
      * @return mixed
      */
-    private static function arrayOfInitialize(string $arg, mixed $value, string $propertyName): mixed
+    private static function arrayOfInitialize(string $arg, mixed $value): mixed
     {
         if (\is_string($value)) {
             $value = self::jsonParser($value, false);
@@ -438,13 +440,20 @@ abstract readonly class ImmutableBase
             return $value;
         }
         foreach ($value as $k => $v) {
+            if (!class_exists($arg)) {
+                match (true) {
+                    get_debug_type($v) === $arg => $values[] = $v,
+                    default                     => throw new InvalidArrayOfItemException($k, $arg)
+                };
+                continue;
+            }
             $values[] = match (true) {
                 $v instanceof $arg                         => $v,
                 \is_array($v)                              => $arg::fromArray($v),
                 is_a($arg, SingleValueObject::class, true) => $arg::from($v),
                 \is_object($v)                             => $arg::fromArray((array) $v),
-                \is_string($v)                             => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $propertyName, $arg),
-                default                                    => throw new InvalidArrayOfItemException($k, $propertyName, $arg)
+                \is_string($v)                             => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
+                default                                    => throw new InvalidArrayOfItemException($k, $arg)
             };
         }
 
@@ -461,7 +470,7 @@ abstract readonly class ImmutableBase
      * @param bool $returnInputOnException When true, returns the decode result silently on failure;
      *                                     when false, throws InvalidJsonException.
      * @throws InvalidJsonException
-     * @return mixed
+     * @return array<string|int, mixed>|string|int|float|bool|null
      */
     private static function jsonParser(string $data, bool $returnInputOnException = true): mixed
     {
@@ -497,8 +506,8 @@ abstract readonly class ImmutableBase
         $typename = $type['typename']['string'];
 
         return match (true) {
-            $type['isUnion']    => static fn(mixed $value)    => self::unionTypeDecide($type, $value),
-            !$type['isBuiltin'] => match (true) {
+            $type['isUnion']     => static fn(mixed $value)     => self::unionTypeDecide($type, $value),
+            !$type['isBuiltin']  => match (true) {
                 $isSub  => static fn(mixed $value): mixed  => match (true) {
                     \is_array($value)           => $typename::fromArray($value),
                     $value instanceof $typename => $value,
@@ -511,7 +520,8 @@ abstract readonly class ImmutableBase
                     default                               => throw new InvalidValueException($typename, $value),
                 },
             },
-            default             => self::builtinTypeResolver($typename),
+            $typename === 'null' => throw new InvalidPropertyTypeException($typename),
+            default              => self::builtinTypeResolver($typename),
         };
     }
     /**
@@ -534,7 +544,6 @@ abstract readonly class ImmutableBase
             'bool'   => static fn($v): bool   => \is_bool($v) ? $v : throw new InvalidValueException('bool', $v),
             'array'  => static fn($v): array => \is_array($v) ? $v : throw new InvalidValueException('array', $v),
             'float'  => static fn($v): float  => \is_float($v) ? $v : throw new InvalidValueException('float', $v),
-            'null'   => static fn($v): null   => $v === null ? $v : throw new InvalidValueException('null', $v),
             default  => static fn($v): mixed  => $v,
         };
     }
@@ -638,7 +647,7 @@ abstract readonly class ImmutableBase
      * @throws DebugLogDirectoryInvalidException
      * @return void
      */
-    private static function logging(array $data, string $class)
+    private static function logging(array $data, string $class): void
     {
         $path = StaticStatus::$logPath;
         if (!is_dir($path)) {
@@ -801,7 +810,6 @@ abstract readonly class ImmutableBase
      * keyed by fully-qualified class name. Uses require_once to prevent
      * double-loading; for test scenarios, assign to StaticStatus::$cachedMeta directly.
      *
-     * @param string $path Absolute or relative path to the cache file generated by the cacher CLI tool.
      * @return void
      */
     final public static function loadCache(): void
@@ -822,7 +830,7 @@ abstract readonly class ImmutableBase
      * @param string|null $path Directory path for log output, or null to disable debug mode.
      * @return void
      */
-    final public static function debug(string | null $path)
+    final public static function debug(string | null $path): void
     {
         StaticStatus::$debug   = $path !== null;
         StaticStatus::$logPath = $path;
@@ -835,7 +843,7 @@ abstract readonly class ImmutableBase
      * @param bool $on True to enable global strict mode, false to disable.
      * @return void
      */
-    final public static function strict(bool $on)
+    final public static function strict(bool $on): void
     {
         StaticStatus::$strict = $on;
     }

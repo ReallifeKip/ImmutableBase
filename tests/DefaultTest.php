@@ -24,10 +24,12 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidEnumVal
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidJsonException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
+use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\StaticStatus;
 use ReflectionClass;
+use Tests\DataTransferObjects\ArrayOfDTO;
 use Tests\DataTransferObjects\DefaultPriorityDTO;
 use Tests\DataTransferObjects\DefaultValuesBothDTO;
 use Tests\DataTransferObjects\DefaultValuesByAttributeDTO;
@@ -56,6 +58,12 @@ class DefaultTest extends TestCase
     private array $array;
     private string $json;
     private vfsStreamDirectory $root;
+    private array $arrayOfData = [
+        'strings' => ['1', '2', '3'],
+        'ints'    => [1, 2, 3],
+        'floats'  => [1.1, 2.2, 3.3],
+        'bools'   => [true, true, false, false],
+    ];
     public function setup(): void
     {
         $this->root               = vfsStream::setup('temp');
@@ -65,7 +73,6 @@ class DefaultTest extends TestCase
             'int'                 => 1,
             'float'               => 1.1,
             'bool'                => true,
-            'null'                => null,
             'array'               => [1, 2, 3],
             'emptyArray'          => [],
             'union'               => 'string',
@@ -270,6 +277,8 @@ class DefaultTest extends TestCase
         $this->assertEquals(DefaultValuesByAttributeDTO::fromArray($nulls)->toArray(), $nulls);
         $this->assertEquals(DefaultValuesByAttributeDTO::fromArray([])->toArray(), $defaults);
         $this->assertEquals(DefaultValuesBothDTO::fromArray([])->toArray(), $defaults);
+
+        $this->assertEquals(ArrayOfDTO::fromArray($this->arrayOfData)->toArray(), $this->arrayOfData);
     }
     public function testDefaultResolutionPriority()
     {
@@ -523,5 +532,25 @@ class DefaultTest extends TestCase
         $this->expectExceptionMessage('stdClass cannot be compared.');
         $dto = DTO::fromArray(['array' => [(object) [1, 2, 3], 2, 3]] + $this->array);
         $dto->equals(DTO::fromArray($this->array));
+    }
+    public function testInvalidArrayOfNativeStringException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['strings' => [1]]));
+    }
+    public function testInvalidArrayOfNativeIntException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['ints' => ['1']]));
+    }
+    public function testInvalidArrayOfNativeFloatException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['strings' => [['nested']]]));
+    }
+    public function testInvalidArrayOfNativeBoolException()
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
     }
 }

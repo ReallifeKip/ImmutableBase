@@ -1,5 +1,7 @@
 <?php
 
+declare (strict_types = 1);
+
 namespace ReallifeKip\ImmutableBase\CLI\writer;
 
 use ReallifeKip\ImmutableBase\CLI\Writer;
@@ -36,7 +38,7 @@ abstract class Mermaid
      * @param list<int> $shortNameCount
      * @return list<string>
      */
-    public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount)
+    public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount): array
     {
         foreach ($namespaceGroups as $namespace => $classes) {
             /** Note: Using str_ireplace because str_replace cannot reach 100% branch coverage. */
@@ -61,7 +63,7 @@ abstract class Mermaid
      * @param string $stereotype DTO, VO, or SVO label (empty string if none).
      * @return list<string>
      */
-    public static function contentBlocksGenerate(array $props, string $name, string $stereotype)
+    public static function contentBlocksGenerate(array $props, string $name, string $stereotype): array
     {
         $content = ["        class {$name} {"];
         if ($stereotype) {

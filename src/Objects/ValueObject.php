@@ -8,7 +8,6 @@ use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainExc
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\StaticStatus;
 use ReallifeKip\ImmutableBase\Types;
-use ReflectionClass;
 
 /**
  * @phpstan-import-type Property from Types
@@ -20,7 +19,7 @@ abstract readonly class ValueObject extends ImmutableBase
      * ValueObject constructor.
      * Initializes the object with data and triggers the recursive validation chain
      * across the class hierarchy.
-     * @param mixed $data Optional initial data to populate the object.
+     * @param mixed $data Initial payload: associative data for regular VOs, or the scalar `$value` for SVO descendants.
      * @throws ValidationChainException If any validation rule in the lineage fails.
      */
     final protected function __construct(mixed $data)
@@ -51,14 +50,14 @@ abstract readonly class ValueObject extends ImmutableBase
      * This method scans each class in the provided lineage for a locally defined 'validate' method.
      * If the 'validate' method returns true, the validation is considered successful (no errors).
      * If it returns false, a ValidationChainException is thrown with a detailed error message,
-     * potentially augmented by the ErrorMessage attribute if present.
+     * potentially augmented by the #[Spec] attribute message when present.
      *
-     * @param ReflectionClass[] $lineage An array of ReflectionClass instances representing the class hierarchy.
+     * @param array<class-string, class-string> $classTree Ordered class lineage (child↔parent depending on mode).
      * @param Caches $properties
      * @throws ValidationChainException If any validation rule fails (returns false).
      * @return void
      */
-    protected static function enforceValidationRules(self $object, array $classTree, array $properties)
+    protected static function enforceValidationRules(self $object, array $classTree, array $properties): void
     {
         $value = null;
         foreach ($classTree as $class) {

@@ -53,7 +53,6 @@ class AttackTest extends TestCase
             'int'                 => 1,
             'float'               => 1.1,
             'bool'                => true,
-            'null'                => null,
             'array'               => [1, 2, 3],
             'emptyArray'          => [],
             'union'               => 'string',

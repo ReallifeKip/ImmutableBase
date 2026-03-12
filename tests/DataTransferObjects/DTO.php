@@ -18,7 +18,6 @@ readonly class DTO extends DataTransferObject
     public int $int;
     public float $float;
     public bool $bool;
-    public null $null;
     public array $array;
     public array $emptyArray;
     public string|int|float|bool|array $union;

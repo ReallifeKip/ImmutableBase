@@ -38,7 +38,7 @@ readonly class Order extends DataTransferObject
     public string $date;
     public string $time;
 }
-Order::fromArray($data); // $data can be an array or JSON
+Order::fromArray($data); // $data must be an array (use fromJson() for JSON strings)
 
 // 🫤 The conventional approach requires writing constructors manually, cannot directly accept external array or JSON data for construction.
 class Order extends DataTransferObject
@@ -115,7 +115,7 @@ SomeException: {error message}
 
 ### 📃 Documentation as Code, Code as Documentation
 
-🥳 ImmutableBase can scan all subclasses in your project via `vendor/bin/ib-writer`, generating Mermaid class diagrams and Markdown property tables to keep documentation in sync with code.
+🥳 ImmutableBase can scan all subclasses in your project via `vendor/bin/ib-writer`, generating Mermaid class diagrams, Markdown property tables, and TypeScript declarations to keep documentation in sync with code.
 
 🫤 The conventional approach cannot guarantee consistency between code and documentation.
 
@@ -298,7 +298,7 @@ readonly class ValidAge extends SingleValueObject
 ```php
 $age = ValidAge::from(18);
 
-echo $age;          // 18 (via __toString, only available when $value is a string)
+echo $age;          // 18 (via __toString, string-casts $value)
 echo $age();        // 18 (via __invoke)
 echo $age->value;   // 18
 ```
@@ -485,16 +485,32 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 ### `#[ArrayOf]` - Typed Array
 
-Marks an array property as a typed collection of ImmutableBase instances. Each element is automatically instantiated from arrays, JSON strings, or pre-built objects. The target class must be a subclass of DTO, VO, or SVO.
+Marks an array property as a typed collection of ImmutableBase instances or primitive scalar values. Each element is automatically validated or instantiated. The target must be a subclass of DTO, VO, or SVO, or a `Native` enum case for scalar arrays.
+
+**Primitive scalar arrays** can be declared using `Native` enum cases instead of a class name:
+
+| Case             | PHP type |
+| ---------------- | -------- |
+| `Native::string` | `string` |
+| `Native::int`    | `int`    |
+| `Native::float`  | `float`  |
+| `Native::bool`   | `bool`   |
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 
 readonly class SignUpUsersDTO extends DataTransferObject
 {
+
+    // ImmutableBase subclass
     #[ArrayOf(User::class)]
     public array $users;
-    public int $userCount;
+
+    // Primitive scalar array
+    #[ArrayOf(Native::string)]
+    public array $tags;
+    #[ArrayOf(Native::int)]
+    public array $scores;
 }
 ```
 
@@ -637,7 +653,7 @@ vendor/bin/ib-cacher --clear
 
 ### `writer` - Documentation Generator
 
-Generates documentation for all ImmutableBase subclasses in the project. Supports Mermaid class diagrams and Markdown property tables.
+Generates documentation for all ImmutableBase subclasses in the project. Supports Mermaid class diagrams, Markdown property tables, and TypeScript declarations.
 
 ```bash
 vendor/bin/ib-writer
@@ -720,7 +736,7 @@ This section is provided for v3 migration reference only.
 ## Notes
 
 1. All subclass properties must be public. Since ImmutableBase is declared as a readonly class, the entire inheritance chain must also be readonly at the PHP language level.
-2. Forbidden property types: `iterable`, `object`, non-ImmutableBase/non-Enum classes such as `DateTime`, `Closure`.
+2. Forbidden property types: `null`, `iterable`, `object`, non-ImmutableBase/non-Enum classes such as `DateTime`, `Closure`.
 3. Enum properties accept case names (`"HIGH"`) or backed values (`3`). The resolved property value is always an Enum instance.
 4. `mixed` type is supported, but values will not be validated.
 

@@ -57,6 +57,7 @@ if (
             [
                 'mmd' => 'mermaid',
                 'md'  => 'markdown',
+                'ts'  => 'typescript',
             ],
         )
     ) &&

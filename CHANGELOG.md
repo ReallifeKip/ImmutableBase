@@ -1,8 +1,22 @@
 # CHANGELOG
 
-## [4.1.1] - 2025-03-07
+## [v4.2.0] - 2026-03-12
+
+### Added
+
+- **`Native` enum — Primitive typed arrays via `#[ArrayOf]`.** `#[ArrayOf]` now accepts `Native::string`, `Native::int`, `Native::float`, and `Native::bool` to declare arrays of validated PHP scalar values without wrapping them in a SingleValueObject.
+- **`ib-writer` TypeScript output.** `vendor/bin/ib-writer` now supports `.ts` generation, producing `declare namespace` blocks with interfaces for DTO/VO, type aliases for SVO, and enum/union types for referenced PHP enums.
+
+### Changed
+
+- **Standalone `null` property type is now forbidden.** Declaring a property typed as `null` alone throws `InvalidPropertyTypeException` at scan time. Use `?Type` or `Type|null` for nullable properties.
+- **`InvalidPropertyTypeException` message updated.** Now explicitly lists allowed types and provides nullable usage guidance.
+- **`InvalidArrayOfItemException` message updated.** Now distinguishes between ImmutableBase class resolution failures and primitive type mismatches.
+
+## [v4.1.1] - 2025-03-07
 
 ### Fixed
+
 #### ib-writer
 - Property tables now include a `default` column displaying default
   values from `#[Defaults]` attributes and `defaultValues()` overrides
