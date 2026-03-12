@@ -85,18 +85,15 @@ abstract class Typescript
             if (!enum_exists($t)) {
                 continue;
             }
-            $ref = new ReflectionClass($t);
-            if (is_subclass_of($t, BackedEnum::class)) {
-                self::$enums[$ref->getNamespaceName()][$ref->getShortName()] = [
-                    'cases'    => array_column($t::cases(), 'value', 'name'),
-                    'isBacked' => true,
-                ];
-            } else {
-                self::$enums[$ref->getNamespaceName()][$ref->getShortName()] = [
-                    'names'    => array_map(static fn($c) => $c->name, $t::cases()),
-                    'isBacked' => false,
-                ];
-            }
+            $ref                                                         = new ReflectionClass($t);
+            self::$enums[$ref->getNamespaceName()][$ref->getShortName()] =
+            is_subclass_of($t, BackedEnum::class) ? [
+                'cases'    => array_column($t::cases(), 'value', 'name'),
+                'isBacked' => true,
+            ] : [
+                'names'    => array_map(static fn($c) => $c->name, $t::cases()),
+                'isBacked' => false,
+            ];
         }
     }
 
@@ -140,7 +137,6 @@ abstract class Typescript
         $lines  = [];
         $backed = [];
         $unit   = [];
-
         foreach ($enums as $name => $enum) {
             if ($enum['isBacked']) {
                 $backed[$name] = $enum;
@@ -148,7 +144,6 @@ abstract class Typescript
                 $unit[$name] = $enum;
             }
         }
-
         foreach ($unit as $name => $enum) {
             $lines = array_merge($lines, self::renderEnum($name, $enum));
         }
@@ -174,19 +169,16 @@ abstract class Typescript
     {
         self::$enums = [];
         $namespaces  = [];
-
         foreach ($classMap as $class) {
             $types     = $class['types'];
             $namespace = $class['namespace'];
             $shortName = $class['shortName'];
-
             if ($class['ref']->isSubclassOf(SingleValueObject::class)) {
                 $type                                        = $types['value'];
                 $tsType                                      = self::resolvePropertyType($type);
                 $namespaces[$namespace]['types'][$shortName] = $tsType;
                 continue;
             }
-
             $properties = [];
             foreach ($types as $type) {
                 $key              = $type['propertyName'] . ($type['allowsNull'] ? '?' : '');
@@ -195,36 +187,9 @@ abstract class Typescript
             }
             $namespaces[$namespace]['interfaces'][$shortName] = $properties;
         }
-
         $ts            = [];
         $orphanedEnums = self::$enums;
-
-        foreach ($namespaces as $namespace => $content) {
-            $declareNamespace = str_replace('\\', '.', $namespace);
-            $localEnums       = $orphanedEnums[$namespace] ?? [];
-            unset($orphanedEnums[$namespace]);
-
-            $ts[] = "declare namespace $declareNamespace {";
-
-            foreach ($content['interfaces'] ?? [] as $name => $properties) {
-                $ts[] = "    interface $name {";
-                foreach ($properties as $k => $v) {
-                    $ts[] = "        $k: $v";
-                }
-                $ts[] = '    }';
-            }
-
-            foreach ($content['types'] ?? [] as $name => $tsType) {
-                $ts[] = "    type $name = $tsType";
-            }
-
-            if ($localEnums) {
-                $ts = array_merge($ts, self::renderEnumBlock($localEnums));
-            }
-
-            $ts[] = '}';
-        }
-
+        self::renderNamespaces($ts, $namespaces, $orphanedEnums);
         foreach ($orphanedEnums as $namespace => $enums) {
             $declareNamespace = str_replace('\\', '.', $namespace);
             $ts[]             = "declare namespace $declareNamespace {";
@@ -233,5 +198,39 @@ abstract class Typescript
         }
 
         return $ts;
+    }
+    /**
+     * Renders TypeScript namespace blocks for collected interfaces, types, and enums.
+     *
+     * Iterates through the parsed namespaces to generate `declare namespace` blocks
+     * containing DTO/VO interfaces and SVO type aliases. It also extracts and renders
+     * local enums, removing them from the orphaned enums tracking array.
+     * Modifies the output array by reference.
+     *
+     * @param list<string> &$ts The accumulated array of TypeScript output lines.
+     * @param array<string, array> $namespaces The structured map of interfaces and types grouped by namespace.
+     * @param array<string, array> &$orphanedEnums Tracking array of enums. Processed enums are removed by reference.
+     * @return void
+     */
+    private static function renderNamespaces(array &$ts, array $namespaces, array &$orphanedEnums)
+    {
+        foreach ($namespaces as $namespace => $content) {
+            $declareNamespace = str_replace('\\', '.', $namespace);
+            $localEnums       = $orphanedEnums[$namespace] ?? [];
+            unset($orphanedEnums[$namespace]);
+            $ts[] = "declare namespace $declareNamespace {";
+            foreach ($content['interfaces'] ?? [] as $name => $properties) {
+                $ts[] = "    interface $name {";
+                foreach ($properties as $k => $v) {
+                    $ts[] = "        $k: $v";
+                }
+                $ts[] = '    }';
+            }
+            foreach ($content['types'] ?? [] as $name => $tsType) {
+                $ts[] = "    type $name = $tsType";
+            }
+            $ts   = array_merge($ts, self::renderEnumBlock($localEnums));
+            $ts[] = '}';
+        }
     }
 }

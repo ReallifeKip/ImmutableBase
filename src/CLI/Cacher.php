@@ -119,7 +119,7 @@ class Cacher
                     $obj = $ref->newInstanceWithoutConstructor(); // NOSONAR
                     $method->invoke(null, $obj);
                     self::defaultValueValidate($class, $obj::defaultValues(), $ref->getProperties());
-                } catch (DefinitionException | Throwable $e) {
+                } catch (Throwable $e) {
                     match (true) {
                         !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
                         default => null

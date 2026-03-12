@@ -15,5 +15,7 @@ namespace ReallifeKip\ImmutableBase\Attributes;
 final class Lax
 {
     private function __construct()
-    {}
+    {
+        // Prevents manual instantiation of the attribute.
+    }
 }

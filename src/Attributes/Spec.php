@@ -18,5 +18,7 @@ namespace ReallifeKip\ImmutableBase\Attributes;
 final class Spec
 {
     private function __construct()
-    {}
+    {
+        // Prevents manual instantiation of the attribute.
+    }
 }

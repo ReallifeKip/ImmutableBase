@@ -330,11 +330,11 @@ class Writer
             $ref = new ReflectionClass($class);
             ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
             $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
-        } catch (DefinitionException | Throwable $e) {
-            if ($e instanceof DefinitionException && !self::$silent) {
-                fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
-            }
-            // Silently skip classes that cannot be instantiated
+        } catch (Throwable $e) {
+            match (true) {
+                !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
+                default => null
+            };
         }
     }
 

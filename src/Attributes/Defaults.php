@@ -24,7 +24,7 @@ final class Defaults
     /**
      * @param mixed $value Fallback value to apply when the property key is absent.
      */
-    public function __construct(
+    private function __construct(
         public mixed $value
     ) {}
 }

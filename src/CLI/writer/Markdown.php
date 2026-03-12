@@ -82,7 +82,10 @@ abstract class Markdown
             /** @var ReflectionProperty $propRef */
             $propRef  = $type['propertyRef'] ?? $ref->getProperty($type['propertyName']);
             $propDocs = self::docParser($propRef->getDocComment());
-            $required = $type['allowsNull'] ? '' : 'yes';
+            $required = match ($type['allowsNull']) {
+                true    => '',
+                default => 'yes'
+            };
             if ($type['isUnion']) {
                 /** @var UnionType $type */
                 $typeNames = array_map(self::unionTypeNamesParser(...), $type['types']);
@@ -99,7 +102,10 @@ abstract class Markdown
                     self::$enums[$type['typename']['string']] = true;
                 }
             }
-            $desc    = $propDocs['desc'] ?: '-';
+            $desc = match (true) {
+                isset($propDocs['desc']) => $propDocs['desc'],
+                default                  => '-'
+            };
             $default = '-';
             if (isset($type['defaults'])) {
                 $default = $type['defaults'];

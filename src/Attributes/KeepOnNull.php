@@ -19,5 +19,7 @@ namespace ReallifeKip\ImmutableBase\Attributes;
 final class KeepOnNull
 {
     private function __construct()
-    {}
+    {
+        // Prevents manual instantiation of the attribute.
+    }
 }
