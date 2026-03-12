@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [v4.2.1] - 2026-03-12
+
+### Refactored
+
+- Internal Structure Optimization: Extracted typescript namespace rendering logic into a standalone renderNamespaces (formerly namespacesHandler) method to reduce cognitive complexity in contentGenerate.
+- Naming Alignment: Renamed internal methods to strictly follow the render* naming convention for better clarity and maintainability.
+- Control Flow Refactoring: Replaced several if-else blocks with match expressions to reduce Cyclomatic Complexity and align with Sonar quality standards.
+
+### Fixed
+- Sonar Compliance: Added explicit documentation and justifications for empty methods to resolve "Methods should not be empty" code smells.
+
 ## [v4.2.0] - 2026-03-12
 
 ### Added
