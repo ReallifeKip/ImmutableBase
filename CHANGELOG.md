@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [4.2.2] - 2026-03-14
+
+### Fixed
+
+- Mark `DataTransferObject::__construct` as `final` to prevent
+  unintended override in subclasses, aligning implementation with
+  original design intent
+- Fix `@desc` annotation handling in ib-writer Markdown mode output:
+  replaced `isset()` check with strict empty string comparison,
+  preventing blank description lines from being written
+
 ## [v4.2.1] - 2026-03-12
 
 ### Refactored

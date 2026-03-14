@@ -103,7 +103,7 @@ abstract class Markdown
                 }
             }
             $desc = match (true) {
-                isset($propDocs['desc']) => $propDocs['desc'],
+                $propDocs['desc'] !== '' => $propDocs['desc'],
                 default                  => '-'
             };
             $default = '-';

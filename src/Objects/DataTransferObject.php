@@ -21,4 +21,8 @@ use ReallifeKip\ImmutableBase\ImmutableBase;
  */
 abstract readonly class DataTransferObject extends ImmutableBase
 {
+    final protected function __construct(array $data = [])
+    {
+        return parent::__construct($data);
+    }
 }
