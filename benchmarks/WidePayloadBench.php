@@ -6,9 +6,8 @@ namespace Benchmarks;
 use Benchmarks\DataTransferObjects\TargetDTO;
 use Benchmarks\DataTransferObjects\WideFlatDTO;
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\StaticStatus;
 
-if (StaticStatus::$cachedMeta === []) {
+if (ImmutableBase::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }
 

@@ -4,6 +4,7 @@ declare (strict_types = 1);
 
 namespace ReallifeKip\ImmutableBase;
 
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -26,6 +27,8 @@ use ReflectionType;
  *     allowsNull: bool,
  *     arrayOf: class-string|null,
  *     propertyName: string,
+ *     inputKeyCase: KeyCase|null,
+ *     hasInputKeyOverride: bool,
  *     typename: Typename,
  *     skipOnNull: bool,
  *     keepOnNull: bool,
@@ -34,7 +37,8 @@ use ReflectionType;
  *   }
  * @phpstan-type NamedTypeFromUnion BaseType & array{
  *     isUnion: false,
- *     isBuiltin: bool
+ *     isBuiltin: bool,
+ *     isEnum: bool
  * }
  * @phpstan-type NamedType NamedTypeFromUnion & array{
  *     isSVO: bool
@@ -61,6 +65,8 @@ use ReflectionType;
  *   spec: string|null,
  *   classTree: list<class-string>,
  *   classTreeReversed: list<class-string>,
+ *   inputKeyCase: KeyCase|null,
+ *   propertyInputKeyCases: array<string, KeyCase>|null,
  *   types: array<string, Type>,
  * }
  *
@@ -80,6 +86,16 @@ use ReflectionType;
  * @phpstan-type ClassMap array<class-string, Class>
  * @phpstan-type NamespaceGroups array<string, list<NamespaceGroup>>
  * @phpstan-type Caches array<class-string, Property>
+ *
+ * @phpstan-type State array{
+ *   debug: bool,
+ *   logPath: ?string,
+ *   cachePath: ?string,
+ *   strict: bool,
+ *   refs: array,
+ *   properties: array,
+ *   cachedMeta: array
+ * }
  */
 abstract class Types
 {}

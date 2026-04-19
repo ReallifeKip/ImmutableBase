@@ -14,7 +14,6 @@ use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
-use ReallifeKip\ImmutableBase\StaticStatus;
 use ReallifeKip\ImmutableBase\Types;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -105,7 +104,7 @@ class Writer
      */
     private static function buildClassMap(): array
     {
-        foreach (StaticStatus::$properties as $value) {
+        foreach (ImmutableBase::state()['properties'] as $value) {
             $fullClass = $value['name'];
             $ref       = new ReflectionClass($fullClass);
             if ($ref->isAbstract()) {

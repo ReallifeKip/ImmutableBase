@@ -9,17 +9,21 @@ use Closure;
 use Composer\Autoload\ClassLoader;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
+use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
+use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\Attributes\Strict;
 use ReallifeKip\ImmutableBase\Attributes\ValidateFromSelf;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Enums\Native;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
@@ -35,7 +39,6 @@ use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainExc
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
-use ReallifeKip\ImmutableBase\StaticStatus;
 use ReallifeKip\ImmutableBase\Types;
 use ReflectionClass;
 use ReflectionNamedType;
@@ -61,6 +64,7 @@ use UnitEnum;
  * @phpstan-import-type Type from Types
  * @phpstan-import-type Property from Types
  * @phpstan-import-type Caches from Types
+ * @phpstan-import-type State from Types
  */
 abstract readonly class ImmutableBase
 {
@@ -90,48 +94,67 @@ abstract readonly class ImmutableBase
         }
     }
     /**
+     * Returns a by-reference handle to the engine's internal state array.
+     * Holds all runtime caches and configuration flags.
+     *
+     * @internal
+     * DANGER: DO NOT USE THIS METHOD!
+     * INTERNAL USE ONLY. MANIPULATING THIS STATE MANUALLY WILL CAUSE FATAL
+     * UNINTENDED CONSEQUENCES, DATA CORRUPTION, OR UNSTABLE ENGINE BEHAVIOR!
+     *
+     * @return State
+     */
+    public static function &state(): array
+    {
+        static $s = [
+            'debug'      => false,
+            'logPath'    => null,
+            'cachePath'  => null,
+            'strict'     => false,
+            'refs'       => [],
+            'properties' => [],
+            'cachedMeta' => [],
+        ];
+
+        return $s;
+    }
+
+    /**
      * Hydrates the object from an associative array.
      * On first instantiation of a given class, triggers property scanning and
      * resolver compilation via buildPropertyInheritanceChain(). Subsequent
-     * instantiations reuse the cached metadata from StaticStatus::$properties.
+     * instantiations reuse the cached metadata from state()['properties'].
+     *
+     * Input keys are remapped before resolution when class-level or property-level
+     * #[InputKeyTo] attributes are present (see applyInputKeyRemap()).
      *
      * Enforces strict mode rejection of redundant keys when enabled globally
      * or via class-level #[Strict] attribute (unless overridden by #[Lax]).
      *
-     * @param array<string, mixed> $data Associative input keyed by property name. Missing nullable keys default to null.
+     * @param array<string, mixed> $data Associative input keyed by property name (or any mapped case). Missing nullable keys default to null.
      */
     protected function __construct(array $data = [])
     {
         self::executeSafely(function ($static, &$errorPath) use ($data) {
+            $s        = &self::state();
             $defaults = static::defaultValues();
-            if (!isset(StaticStatus::$properties[$static])) {
+            if (!isset($s['properties'][$static])) {
                 $this::buildPropertyInheritanceChain($this);
             }
-            if (StaticStatus::$debug) {
+            if ($s['debug']) {
                 self::logging($data, $this::class);
             }
-            $class = StaticStatus::$properties[$static];
+            $class = $s['properties'][$static];
+            if ($class['inputKeyCase'] !== null || $class['propertyInputKeyCases'] !== null) {
+                $data = self::applyInputKeyRemap($data, $class);
+            }
             if (
                 !$class['isLax'] &&
-                (StaticStatus::$strict || $class['isStrict']) && $redundant = array_keys(array_diff_key($data, $class['types']))
+                ($s['strict'] || $class['isStrict']) && $redundant = array_keys(array_diff_key($data, $class['types']))
             ) {
                 throw new StrictViolationException($class['name'], $redundant);
             }
-            foreach ($class['types'] as $type) {
-                $name = $errorPath = $type['propertyName'];
-                if (!\array_key_exists($name, $data)) {
-                    $data[$name] = $type['defaults'] ?? match (true) {
-                        \array_key_exists($name, $defaults) => $defaults[$name],
-                        isset($type['propertyRef'])         => self::getAttributeArgument($type['propertyRef'], Defaults::class),
-                        default                             => null
-                    };
-                }
-                match (true) {
-                    !isset($data[$name]) && !$type['allowsNull'] => throw new RequiredValueException($name),
-                    default                                      => $resolved[$name] = self::resolveValue($type, $data[$name] ?? null, false)
-                };
-            }
-            $class['hydrator']($this, $resolved ?? []);
+            $class['hydrator']($this, self::resolvePropertyData($data, $class['types'], $defaults, $errorPath));
         });
     }
     /**
@@ -139,8 +162,8 @@ abstract readonly class ImmutableBase
      * scanning and compiling property metadata for each ancestor that hasn't
      * been processed yet. Supports three metadata sources:
      *
-     *   1. StaticStatus::$properties — already compiled (skip via continue)
-     *   2. StaticStatus::$cachedMeta — pre-generated cache (restore validate method)
+     *   1. state()['properties'] — already compiled (skip via continue)
+     *   2. state()['cachedMeta'] — pre-generated cache (restore validate method)
      *   3. Reflection — full scan via scanProperties()
      *
      * After metadata is resolved, each property type gets a compiled resolver
@@ -155,19 +178,20 @@ abstract readonly class ImmutableBase
      */
     final protected static function buildPropertyInheritanceChain(self $object): array
     {
+        $s      = &self::state();
         $static = static::class;
         $self   = self::class;
-        if (!isset(StaticStatus::$properties[$static]) && !isset(StaticStatus::$refs[$static])) {
-            StaticStatus::$refs[$static] = new ReflectionClass($object);
+        if (!isset($s['properties'][$static]) && !isset($s['refs'][$static])) {
+            $s['refs'][$static] = new ReflectionClass($object);
         }
-        for ($ref = StaticStatus::$refs[$static] ?? null; $ref && $ref?->name !== $self; $ref = $ref->getParentClass()) {
+        for ($ref = $s['refs'][$static] ?? null; $ref && $ref?->name !== $self; $ref = $ref->getParentClass()) {
             $classname = $ref->name;
-            if (isset(StaticStatus::$properties[$classname])) {
+            if (isset($s['properties'][$classname])) {
                 continue;
             }
-            if (isset(StaticStatus::$cachedMeta[$classname])) {
-                $props                   = StaticStatus::$cachedMeta[$classname];
-                $refClass                = StaticStatus::$refs[$classname] ??= new ReflectionClass($classname);
+            if (isset($s['cachedMeta'][$classname])) {
+                $props                   = $s['cachedMeta'][$classname];
+                $refClass                = $s['refs'][$classname] ??= new ReflectionClass($classname);
                 $props['validateMethod'] = !$props['hasValidate'] ?: $refClass->getMethod('validate');
             } else {
                 $props = self::scanProperties(
@@ -187,11 +211,42 @@ abstract readonly class ImmutableBase
                     $type['isSVO'] ??= false
                 );
             }
-            $props['hydrator']                    = self::createHydrator($classname, array_keys($props['types']));
-            StaticStatus::$properties[$classname] = $props;
+            $props['hydrator']           = self::createHydrator($classname, array_keys($props['types']));
+            $s['properties'][$classname] = $props;
         }
 
-        return StaticStatus::$properties;
+        return $s['properties'];
+    }
+
+    /**
+     * Iterates the compiled property type map, fills in missing keys with their
+     * default values (attribute-declared, method-declared, or null), then
+     * resolves each value against its declared type via resolveValue().
+     *
+     * @param array<string, mixed>  $data      Input array, mutated in place when a default is injected.
+     * @param array<string, Type>   $types     Compiled property type metadata from scanProperties().
+     * @param array<string, mixed>  $defaults  Default values returned by defaultValues().
+     * @param string|null           $errorPath Reference updated to the current property name for error context.
+     * @return array<string, mixed> Resolved property values keyed by property name.
+     */
+    private static function resolvePropertyData(array &$data, array $types, array $defaults,  ? string &$errorPath) : array
+    {
+        foreach ($types as $type) {
+            $name = $errorPath = $type['propertyName'];
+            if (!\array_key_exists($name, $data)) {
+                $data[$name] = $type['defaults'] ?? match (true) {
+                    \array_key_exists($name, $defaults) => $defaults[$name],
+                    isset($type['propertyRef'])         => self::getAttributeArgument($type['propertyRef'], Defaults::class),
+                    default                             => null
+                };
+            }
+            match (true) {
+                !isset($data[$name]) && !$type['allowsNull'] => throw new RequiredValueException($name),
+                default                                      => $resolved[$name] = self::resolveValue($type, $data[$name] ?? null, false)
+            };
+        }
+
+        return $resolved ?? [];
     }
 
     /**
@@ -219,8 +274,10 @@ abstract readonly class ImmutableBase
     /**
      * Reflects all public properties of a class and assembles the full
      * property metadata structure. Extracts class-level attributes (#[Strict],
-     * #[Lax], #[SkipOnNull], #[ValidateFromSelf], #[Spec]) and builds the
-     * validation lineage via classTree for enforceValidationRules().
+     * #[Lax], #[SkipOnNull], #[ValidateFromSelf], #[Spec], #[InputKeyTo],
+     * #[OutputKeyTo]) and builds the validation lineage via classTree for
+     * enforceValidationRules(). Also collects per-property InputKeyTo overrides
+     * into `propertyInputKeyCases` for use by applyInputKeyRemap().
      *
      * @param ReflectionClass $ref The class to scan.
      * @param array{bool, bool, bool} $flags Tuple of [isDTO, isVO, isSVO] indicating the object's base type.
@@ -254,6 +311,7 @@ abstract readonly class ImmutableBase
             'spec'              => $spec ?? null,
             'classTree'         => $classTree,
             'classTreeReversed' => array_reverse($classTree),
+            'inputKeyCase'      => self::getValidatedKeyCase(self::getAttributeArgument($ref, InputKeyTo::class), 'InputKeyTo', "$classname::class"),
             'types'             => [],
         ];
         $obj      = null;
@@ -263,9 +321,10 @@ abstract readonly class ImmutableBase
             $obj      = $ref->newInstanceWithoutConstructor();
             $defaults = $obj::defaultValues();
         }
+        $classOutputKeyCase = self::getValidatedKeyCase(self::getAttributeArgument($ref, OutputKeyTo::class), 'OutputKeyTo', "$classname::class");
         foreach ($ref->getProperties() as $property) {
             $name                 = $property->name;
-            $prop['types'][$name] = self::scanProperty($property, $prop['skipOnNull']);
+            $prop['types'][$name] = self::scanProperty($property, $prop['skipOnNull'], $classOutputKeyCase);
             $default              = match (true) {
                 $obj === null                       => null,
                 \array_key_exists($name, $defaults) => $defaults[$name],
@@ -275,6 +334,12 @@ abstract readonly class ImmutableBase
                 $prop['types'][$name]['defaults'] = $default;
             }
         }
+        foreach ($prop['types'] as $name => $type) {
+            if ($type['hasInputKeyOverride']) {
+                $propInputKeyCases[$name] = $type['inputKeyCase'];
+            }
+        }
+        $prop['propertyInputKeyCases'] = $propInputKeyCases ?? null;
 
         return $prop;
     }
@@ -283,29 +348,41 @@ abstract readonly class ImmutableBase
      * Extracts type metadata from a single property. Enforces that all
      * properties must be public (readonly is implicit via the class declaration).
      * Delegates to scanNamedType() or scanUnionType() based on reflection type,
-     * and resolves #[ArrayOf], #[SkipOnNull], #[KeepOnNull] attributes.
+     * and resolves #[ArrayOf], #[SkipOnNull], #[KeepOnNull], #[InputKeyTo],
+     * #[OutputKeyTo] attributes. Property-level #[InputKeyTo] stores the target
+     * KeyCase in `inputKeyCase`; combined with `hasInputKeyOverride`, this is
+     * picked up by scanProperties() for applyInputKeyRemap(). Property-level
+     * #[OutputKeyTo] (falling back to the class-level case) pre-computes `outputKey`.
      *
-     * @param ReflectionProperty $property The property to extract metadata from.
-     * @param bool $classSkipOnNull Whether the owning class has a class-level #[SkipOnNull] attribute.
+     * @param ReflectionProperty $property         The property to extract metadata from.
+     * @param bool               $classSkipOnNull  Whether the owning class has a class-level #[SkipOnNull] attribute.
+     * @param KeyCase|null       $classOutputKeyCase Class-level OutputKeyTo case, used when the property has none.
      * @throws InvalidVisibilityException
      * @return Type
      */
-    private static function scanProperty(ReflectionProperty $property, bool $classSkipOnNull): array
+    private static function scanProperty(ReflectionProperty $property, bool $classSkipOnNull, ?KeyCase $classOutputKeyCase = null): array
     {
         if (!$property->isPublic()) {
             throw new InvalidVisibilityException($property->name);
         }
-        $type = $property->getType();
+        $type    = $property->getType();
+        $name    = $property->name;
+        $target  = $property->getDeclaringClass()->getName() . "::$$name";
+        $inCase  = self::getValidatedKeyCase(self::getAttributeArgument($property, InputKeyTo::class), 'InputKeyTo', $target);
+        $outCase = self::getValidatedKeyCase(self::getAttributeArgument($property, OutputKeyTo::class), 'OutputKeyTo', $target) ?? $classOutputKeyCase;
 
         return [
-            'ref'          => $type,
-            'propertyRef'  => $property,
-            'allowsNull'   => $type->allowsNull(),
-            'arrayOf'      => self::resolveArrayOf($property, $type),
-            'propertyName' => $property->name,
-            'skipOnNull'   => $classSkipOnNull || $property->getAttributes(SkipOnNull::class) !== [],
-            'keepOnNull'   => $property->getAttributes(KeepOnNull::class) !== [],
-            'isUnion'      => !($type instanceof ReflectionNamedType),
+            'ref'                 => $type,
+            'propertyRef'         => $property,
+            'allowsNull'          => $type->allowsNull(),
+            'arrayOf'             => self::resolveArrayOf($property, $type),
+            'propertyName'        => $name,
+            'inputKeyCase'        => $inCase,
+            'hasInputKeyOverride' => $inCase !== null,
+            'outputKey'           => $outCase !== null ? self::convertCase($name, $outCase) : $name,
+            'skipOnNull'          => $classSkipOnNull || $property->getAttributes(SkipOnNull::class) !== [],
+            'keepOnNull'          => $property->getAttributes(KeepOnNull::class) !== [],
+            'isUnion'             => !($type instanceof ReflectionNamedType),
         ] + ($type instanceof ReflectionNamedType ? self::scanNamedType($type) : self::scanUnionType($type));
     }
 
@@ -328,11 +405,30 @@ abstract readonly class ImmutableBase
             $arg === null                           => null,
             $arg === []                             => throw new InvalidArrayOfTargetException(),
             $arg instanceof Native                  => $arg->value,
+            enum_exists($arg)                       => $arg,
             !is_a($arg, self::class, true)          => throw new InvalidArrayOfTargetException(),
             $refType instanceof ReflectionUnionType => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
             $refType->getName() !== 'array'         => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
             default                                 => $arg
         };
+    }
+
+    /**
+     * Validates that a value resolved from #[InputKeyTo] or #[OutputKeyTo] is
+     * either null (attribute absent) or a KeyCase enum instance.
+     *
+     * @param mixed  $value     The raw attribute argument.
+     * @param string $attribute Short attribute name ('InputKeyTo' or 'OutputKeyTo').
+     * @param string $target    Human-readable scan location for the exception message.
+     * @throws InvalidKeyCaseException
+     */
+    private static function getValidatedKeyCase(mixed $value, string $attribute, string $target): ?KeyCase
+    {
+        if ($value !== null && !($value instanceof KeyCase)) {
+            throw new InvalidKeyCaseException($value, $attribute, $target);
+        }
+
+        return $value;
     }
 
     /**
@@ -353,7 +449,8 @@ abstract readonly class ImmutableBase
     {
         $typename  = $refType->getName();
         $isBuiltin = $refType->isBuiltin();
-        if ($typename === 'object' || $typename === 'iterable' || (!$isBuiltin && !is_a($typename, self::class, true) && !enum_exists($typename))) {
+        $isEnum    = !$isBuiltin && enum_exists($typename);
+        if ($typename === 'object' || $typename === 'iterable' || (!$isBuiltin && !is_a($typename, self::class, true) && !$isEnum)) {
             throw new InvalidPropertyTypeException($typename);
         }
         $result = [
@@ -362,9 +459,10 @@ abstract readonly class ImmutableBase
                 'array'  => [$typename],
             ],
             'isBuiltin' => $isBuiltin,
+            'isEnum'    => $isEnum,
         ];
         if (!$fromUnion) {
-            $cached          = StaticStatus::$properties[$typename] ?? false;
+            $cached          = self::state()['properties'][$typename] ?? false;
             $result['isSVO'] = $cached ? $cached['isSVO'] : (!$isBuiltin && is_a($typename, SingleValueObject::class, true));
         }
 
@@ -439,8 +537,11 @@ abstract readonly class ImmutableBase
         if (!\is_array($value) || empty($value)) {
             return $value;
         }
+        $classExists = class_exists($arg);
+        $isEnum      = $classExists && enum_exists($arg);
+        $isSVO       = $classExists && is_a($arg, SingleValueObject::class, true);
         foreach ($value as $k => $v) {
-            if (!class_exists($arg)) {
+            if (!$classExists) {
                 match (true) {
                     get_debug_type($v) === $arg => $values[] = $v,
                     default                     => throw new InvalidArrayOfItemException($k, $arg)
@@ -448,12 +549,13 @@ abstract readonly class ImmutableBase
                 continue;
             }
             $values[] = match (true) {
-                $v instanceof $arg                         => $v,
-                \is_array($v)                              => $arg::fromArray($v),
-                is_a($arg, SingleValueObject::class, true) => $arg::from($v),
-                \is_object($v)                             => $arg::fromArray((array) $v),
-                \is_string($v)                             => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
-                default                                    => throw new InvalidArrayOfItemException($k, $arg)
+                $v instanceof $arg => $v,
+                \is_array($v)      => $arg::fromArray($v),
+                $isEnum            => self::analyzeEnum($arg, $v),
+                $isSVO             => $arg::from($v),
+                \is_object($v)     => $arg::fromArray((array) $v),
+                \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
+                default            => throw new InvalidArrayOfItemException($k, $arg)
             };
         }
 
@@ -591,18 +693,16 @@ abstract readonly class ImmutableBase
      */
     private static function valueDecide(array $type, mixed $value): mixed
     {
+        $typename = $type['typename']['string'];
         if (!$type['isBuiltin']) {
-            $typename = $type['typename']['string'];
-
             return match (true) {
                 $value instanceof $typename                                            => $value,
-                (\is_string($value) || \is_int($value)) && enum_exists($typename)      => self::analyzeEnum($typename, $value),
+                (\is_string($value) || \is_int($value)) && $type['isEnum']             => self::analyzeEnum($typename, $value),
                 \is_array($value) && is_a($typename, self::class, true)                => $typename::fromArray($value),
                 is_a($typename, SingleValueObject::class, true) && !\is_object($value) => $typename::from($value),
                 default                                                                => throw new InvalidValueException($typename, $value),
             };
         }
-        $typename = $type['typename']['string'];
         if (
             !match ($typename) {
                 'int'    => \is_int($value),
@@ -649,11 +749,12 @@ abstract readonly class ImmutableBase
      */
     private static function logging(array $data, string $class): void
     {
-        $path = StaticStatus::$logPath;
+        $s    = self::state();
+        $path = $s['logPath'];
         if (!is_dir($path)) {
             throw new DebugLogDirectoryInvalidException($path);
         }
-        $redundant = array_diff_key($data, StaticStatus::$properties[static::class]['types']);
+        $redundant = array_diff_key($data, $s['properties'][static::class]['types']);
         if ($redundant) {
             file_put_contents("$path/ImmutableBaseDebugLog.log", json_encode([
                 'time'      => date('Y-m-d H:i:s'), 'object'   => $class,
@@ -672,14 +773,14 @@ abstract readonly class ImmutableBase
      * @param mixed $value The property value to convert: scalar passthrough, SVO→value, enum→value/name, IB→toArray().
      * @return mixed The array-serializable representation.
      */
-    private static function toArrayOrValue(mixed $value)
+    private static function toArrayOrValue(mixed $value, KeyCase | bool $keyCase = false)
     {
         return match (true) {
             !\is_object($value)                 => $value,
             $value instanceof SingleValueObject => $value->value,
             $value instanceof BackedEnum        => $value->value,
             $value instanceof UnitEnum          => $value->name,
-            default                             => $value->toArray()
+            default                             => $value->toArray($keyCase)
         };
     }
     /**
@@ -748,6 +849,32 @@ abstract readonly class ImmutableBase
     }
 
     /**
+     * Resolves accumulated deep-path updates (dot/bracket notation) into $values.
+     * For each root key, delegates to with() for ImmutableBase instances or
+     * applyArrayDeepUpdate() for plain arrays, then re-resolves ArrayOf properties.
+     *
+     * @param array<string, mixed>                       $values      Current property values, mutated in place.
+     * @param array<string, array<string, mixed>>        $deepUpdates Root → sub-path map collected during the flat loop.
+     * @param array<string, Type>                        $types       Compiled type metadata for the class.
+     * @param string                                     $separator   The path delimiter used to split keys.
+     * @param string|null                                $errorPath   Reference updated to the current root for error context.
+     */
+    private static function resolveDeepUpdates(array &$values, array $deepUpdates, array $types, string $separator,  ? string &$errorPath) : void
+    {
+        foreach ($deepUpdates as $root => $sub) {
+            $errorPath     = $root;
+            $current       = $values[$root];
+            $values[$root] = match (true) {
+                $current instanceof self => $current->with($sub, $separator),
+                default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
+            };
+            if ($types[$root]['arrayOf'] !== null) {
+                $values[$root] = self::resolveValue($types[$root], $values[$root], false);
+            }
+        }
+    }
+
+    /**
      * Applies deep updates to a plain array (non-ImmutableBase) value. Groups sub-paths
      * by their next segment: paths containing the separator are accumulated
      * for recursive with() on nested ImmutableBase instances; flat keys are assigned directly.
@@ -784,6 +911,86 @@ abstract readonly class ImmutableBase
         return $current;
     }
     /**
+     * Applies class-level and property-level InputKeyTo remapping to an input array.
+     *
+     * Class-level: converts every string key to the declared KeyCase.
+     * Property-level overrides: for each property that carries its own InputKeyTo,
+     * scans the original (pre-class-remap) input and converts each key to the
+     * property's declared case; on the first match, writes the value under the
+     * property name directly.
+     *
+     * @param array<string|int, mixed> $data  Raw input array.
+     * @param array{inputKeyCase: KeyCase|null, propertyInputKeyCases: array<string, KeyCase>|null} $class Compiled class metadata.
+     * @return array<string|int, mixed>
+     */
+    private static function applyInputKeyRemap(array $data, array $class): array
+    {
+        $original = $data;
+        if ($class['inputKeyCase'] !== null) {
+            $data = self::remapInputKeys($original, $class['inputKeyCase']);
+        }
+        if ($class['propertyInputKeyCases'] !== null) {
+            foreach ($class['propertyInputKeyCases'] as $propName => $propKeyCase) {
+                foreach ($original as $inputKey => $inputValue) {
+                    if (\is_string($inputKey) && self::convertCase($inputKey, $propKeyCase) === $propName) {
+                        $data[$propName] = $inputValue;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Converts all string keys of an input array to the specified naming convention.
+     * Integer keys are passed through unchanged.
+     *
+     * @param array<string|int, mixed> $data The raw input array.
+     * @param KeyCase $keyCase The target naming convention to apply to each key.
+     * @return array<string|int, mixed>
+     */
+    private static function remapInputKeys(array $data, KeyCase $keyCase): array
+    {
+        foreach ($data as $k => $v) {
+            $remapped[\is_string($k) ? self::convertCase($k, $keyCase) : $k] = $v;
+        }
+
+        return $remapped ?? [];
+    }
+    /**
+     * Converts a property name to the specified naming convention.
+     * Splits the name on camelCase/PascalCase boundaries, underscores,
+     * hyphens, and whitespace, then rejoins in the target case.
+     *
+     * @param string $name The property name to convert.
+     * @param KeyCase $keyCase The target naming convention.
+     * @return string
+     */
+    private static function convertCase(string $name, KeyCase $keyCase): string
+    {
+        static $separator = [
+            'PascalSnake' => '_',
+            'Pascal'      => '',
+            'Train'       => '-',
+            'Snake'       => '_',
+            'Kebab'       => '-',
+        ];
+        $words = array_map(
+            'strtolower',
+            preg_split('/(?<=[a-z\d])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|[-_\s]+/', $name, -1, PREG_SPLIT_NO_EMPTY)
+        );
+
+        return match ($keyCase) {
+            KeyCase::Snake, KeyCase::Kebab => join($separator[$keyCase->value], $words),
+            KeyCase::Macro      => join('_', array_map('strtoupper', $words)),
+            KeyCase::Camel      => $words[0] . join('', array_map('ucfirst', \array_slice($words, 1))),
+            KeyCase::CamelKebab => "{$words[0]}-" . join('-', array_map('ucfirst', \array_slice($words, 1))),
+            default => join($separator[$keyCase->value], array_map('ucfirst', $words))
+        };
+    }
+    /**
      * Fast check for JSON-like string values. Only triggers speculative
      * parsing for strings starting with '{' or '[' (after trimming whitespace).
      * Non-string values return false immediately to avoid unnecessary work
@@ -794,31 +1001,27 @@ abstract readonly class ImmutableBase
      */
     private static function jsonLike(mixed $value): bool
     {
-        if (\is_string($value)) {
-            return isset([
-                '[' => 0,
-                '{' => 1,
-            ][trim($value)[0] ?? '']);
-        }
+        static $open = ['{' => true, '[' => true];
 
-        return false;
+        return \is_string($value) && isset($open[trim($value)[0] ?? '']);
     }
 
     /**
      * Loads pre-generated property metadata from a cache file, bypassing
      * reflection-based scanning. The cache must return an associative array
      * keyed by fully-qualified class name. Uses require_once to prevent
-     * double-loading; for test scenarios, assign to StaticStatus::$cachedMeta directly.
+     * double-loading; for test scenarios, set state()['cachedMeta'] directly.
      *
      * @return void
      */
     final public static function loadCache(): void
     {
-        $path = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
-        if (!StaticStatus::$cachedMeta && file_exists($path)) {
+        $s    = &self::state();
+        $path = $s['cachePath'] ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
+        if (!$s['cachedMeta'] && file_exists($path)) {
             // This file is a machine-generated array from var_export (Cache).
             // Since it's data-as-code and paths are dynamic, PSR-4 'use' is not applicable.
-            StaticStatus::$cachedMeta = require $path; // NOSONAR
+            $s['cachedMeta'] = require $path; // NOSONAR
         }
     }
 
@@ -832,8 +1035,9 @@ abstract readonly class ImmutableBase
      */
     final public static function debug(string | null $path): void
     {
-        StaticStatus::$debug   = $path !== null;
-        StaticStatus::$logPath = $path;
+        $s            = &self::state();
+        $s['debug']   = $path !== null;
+        $s['logPath'] = $path;
     }
 
     /**
@@ -845,7 +1049,8 @@ abstract readonly class ImmutableBase
      */
     final public static function strict(bool $on): void
     {
-        StaticStatus::$strict = $on;
+        $s           = &self::state();
+        $s['strict'] = $on;
     }
 
     /**
@@ -878,18 +1083,29 @@ abstract readonly class ImmutableBase
      * toArrayOrValue(). toJson() delegates entirely to this method to
      * guarantee serialization consistency.
      *
+     * @param KeyCase|bool $keyCase
+     *     Controls the key format of the serialized output.
+     *     - false (default): Use property names as-is.
+     *     - true: Respect each layer's #[InputKeysTo] definition.
+     *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return array
      */
-    final public function toArray(): array
+    final public function toArray(KeyCase | bool $keyCase = false): array
     {
+        $types = self::state()['properties'][static::class]['types'];
         foreach (get_object_vars($this) as $name => $value) {
-            $type = StaticStatus::$properties[static::class]['types'][$name];
+            $type = $types[$name];
             if ($type['skipOnNull'] && $value === null && !$type['keepOnNull']) {
                 continue;
             }
-            $result[$name] = is_array($value)
-            ? array_map([$this, 'toArrayOrValue'], $value)
-            : self::toArrayOrValue($value);
+            $outputName = match (true) {
+                $keyCase instanceof KeyCase => self::convertCase($name, $keyCase),
+                $keyCase                    => $type['outputKey'],
+                default                     => $name,
+            };
+            $result[$outputName] = \is_array($value)
+            ? array_map(fn($v) => self::toArrayOrValue($v, $keyCase), $value)
+            : self::toArrayOrValue($value, $keyCase);
         }
 
         return $result ?? [];
@@ -900,11 +1116,16 @@ abstract readonly class ImmutableBase
      * ensure SkipOnNull/KeepOnNull behavior is consistent across both
      * serialization formats.
      *
+     * @param KeyCase|bool $keyCase
+     *     Controls the key format of the serialized output.
+     *     - false (default): Use property names as-is.
+     *     - true: Respect each layer's #[InputKeysTo] definition.
+     *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return string
      */
-    final public function toJson(): string
+    final public function toJson(KeyCase | bool $keyCase = false): string
     {
-        return json_encode($this->toArray());
+        return json_encode($this->toArray($keyCase));
     }
 
     /**
@@ -955,6 +1176,9 @@ abstract readonly class ImmutableBase
      * three input formats: associative array, object (cast to array), or
      * JSON string. For SVOs, replaces the entire wrapped value.
      *
+     * Input keys are remapped before resolution when class-level or property-level
+     * #[InputKeyTo] attributes are present (see applyInputKeyRemap()).
+     *
      * Dot-notation and bracket-notation paths (e.g. "customer.address.city"
      * or "items[0].sku") are resolved into nested with() calls. The separator
      * can be customized (e.g. "/" for JSON Pointer-like paths). Deep path
@@ -973,13 +1197,17 @@ abstract readonly class ImmutableBase
         }
         ImmutableBaseException::$depth++;
         try {
+            $s              = &self::state();
             $values         = get_object_vars($this);
-            $props          = StaticStatus::$properties[$static];
+            $props          = $s['properties'][$static];
             $types          = $props['types'];
             $normalizedData = match (\is_string($data)) {
                 true    => self::jsonParser($data, false),
                 default => (array) $data
             };
+            if ($props['inputKeyCase'] !== null || $props['propertyInputKeyCases'] !== null) {
+                $normalizedData = self::applyInputKeyRemap($normalizedData, $props);
+            }
             foreach ($normalizedData as $path => $value) {
                 $errorPath = $path;
                 if ($separator !== '' && strpbrk($path, "$separator\[")) {
@@ -990,22 +1218,14 @@ abstract readonly class ImmutableBase
                     $values[$path] = self::resolveValue($types[$path], $value, true);
                 }
             }
-            foreach ($deepUpdates ?? [] as $root => $sub) {
-                $errorPath     = $root;
-                $current       = $values[$root];
-                $values[$root] = match (true) {
-                    $current instanceof self => $current->with($sub, $separator),
-                    default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
-                };
-                if ($types[$root]['arrayOf'] !== null) {
-                    $values[$root] = self::resolveValue($types[$root], $values[$root], false);
-                }
+            if (isset($deepUpdates)) {
+                self::resolveDeepUpdates($values, $deepUpdates, $types, $separator, $errorPath);
             }
-            $ref      = StaticStatus::$refs[$static] ??= new ReflectionClass($static);
-            $instance = $ref->newInstanceWithoutConstructor();
+            $s['refs'][$static] ??= new ReflectionClass($static);
+            $instance = $s['refs'][$static]->newInstanceWithoutConstructor();
             $props['hydrator']($instance, $values);
             if (!$props['isDTO']) {
-                $cache = StaticStatus::$properties;
+                $cache = $s['properties'];
                 $class = $cache[$static];
                 /** @var class-string<ValueObject> $static */
                 $static::enforceValidationRules(
@@ -1051,6 +1271,6 @@ abstract readonly class ImmutableBase
     }
 }
 
-if (StaticStatus::$cachedMeta === []) {
+if (ImmutableBase::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }

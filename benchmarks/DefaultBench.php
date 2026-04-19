@@ -7,9 +7,8 @@ use Benchmarks\DataTransferObjects\NestedDTO;
 use Benchmarks\DataTransferObjects\Order;
 use Benchmarks\DataTransferObjects\SimpleDTO;
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\StaticStatus;
 
-if (StaticStatus::$cachedMeta === []) {
+if (ImmutableBase::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }
 

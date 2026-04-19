@@ -603,6 +603,60 @@ try {
 
 By default, the VO and SVO validation chain walks from the top of the inheritance chain down to the current class. With `#[ValidateFromSelf]` applied, the chain is reversed to start from the current class and walk upward.
 
+### `#[InputKeyTo]` - Input Key Case Conversion
+
+Converts incoming array keys to the specified `KeyCase` naming convention before hydration. Applied at class level, it remaps all keys; applied at property level, it overrides the class-level conversion for that property only.
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
+
+// Class-level: accepts snake_case input keys (nick_name → nickName)
+#[InputKeyTo(KeyCase::Camel)]
+readonly class UserDTO extends DataTransferObject
+{
+    public string $nickName;
+}
+
+UserDTO::fromArray(['nick_name' => 'Kip']); // nickName = 'Kip'
+```
+
+### `#[OutputKeyTo]` - Output Key Case Conversion
+
+Converts property names to the specified `KeyCase` naming convention during serialization. Applied at class level, it remaps all serialized keys; applied at property level, it overrides the class-level conversion for that property only.
+
+The argument passed to `toArray()` / `toJson()` controls the conversion behavior:
+- `false` (default): no key conversion — property names are output as-is
+- `true`: applies the `#[OutputKeyTo]`-defined conversion for the current level only — nested objects use their own `#[OutputKeyTo]` declarations independently and are not affected
+- `KeyCase::*`: ignores `#[OutputKeyTo]` and forces the specified case globally
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
+
+// Class-level: serializes nickName → nick_name
+#[OutputKeyTo(KeyCase::Snake)]
+readonly class UserDTO extends DataTransferObject
+{
+    public string $nickName;
+}
+
+UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Kip']
+```
+
+Available `KeyCase` values:
+
+| Case | Example |
+|---|---|
+| `KeyCase::Snake` | `nick_name` |
+| `KeyCase::PascalSnake` | `Nick_Name` |
+| `KeyCase::Macro` | `NICK_NAME` |
+| `KeyCase::Camel` | `nickName` |
+| `KeyCase::Pascal` | `NickName` |
+| `KeyCase::Kebab` | `nick-name` |
+| `KeyCase::CamelKebab` | `nick-Name` |
+| `KeyCase::Train` | `Nick-Name` |
+
 ---
 
 ## Configuration
@@ -680,6 +734,8 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 `InvalidArrayOfUsageException` - `#[ArrayOf]` is applied to a property whose type is not `array`.
 
 `InvalidSpecException` - `#[Spec]` is used without an argument or with an empty argument.
+
+`InvalidKeyCaseException` - `#[InputKeyTo]` or `#[OutputKeyTo]` received a value that is not a `KeyCase` enum instance (e.g. a plain string instead of `KeyCase::Camel`).
 
 `InvalidCompareTargetException` - The `equals()` comparison target is not the same class, or an array contains a non-ImmutableBase object that cannot be compared.
 

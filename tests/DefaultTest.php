@@ -7,13 +7,16 @@ use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
+use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
+use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\Attributes\Strict;
 use ReallifeKip\ImmutableBase\Attributes\ValidateFromSelf;
 use ReallifeKip\ImmutableBase\CLI\Cacher;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
@@ -27,7 +30,6 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueE
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\StaticStatus;
 use ReflectionClass;
 use Tests\DataTransferObjects\ArrayOfDTO;
 use Tests\DataTransferObjects\DefaultPriorityDTO;
@@ -66,9 +68,10 @@ class DefaultTest extends TestCase
     ];
     public function setup(): void
     {
-        $this->root               = vfsStream::setup('temp');
-        StaticStatus::$cachedMeta = [];
-        $this->array              = [
+        $this->root      = vfsStream::setup('temp');
+        $s               = &ImmutableBase::state();
+        $s['cachedMeta'] = [];
+        $this->array     = [
             'string'              => 'string',
             'int'                 => 1,
             'float'               => 1.1,
@@ -235,23 +238,20 @@ class DefaultTest extends TestCase
             'mixed' => DTO::fromArray($this->array),
         ]);
 
-        foreach (
-            [
-                ArrayOf::class,
-                KeepOnNull::class,
-                Lax::class,
-                SkipOnNull::class,
-                Spec::class,
-                Strict::class,
-                ValidateFromSelf::class,
-                Defaults::class,
-            ] as $class
-        ) {
-            $ref         = new ReflectionClass($class);
-            $constructor = $ref->getConstructor();
-            $constructor->setAccessible(true); // NOSONAR
-            $instance = $ref->newInstanceWithoutConstructor(); // NOSONAR
-            $constructor->invoke($instance, '');
+        foreach ([
+            ArrayOf::class,
+            KeepOnNull::class,
+            Lax::class,
+            SkipOnNull::class,
+            Spec::class,
+            Strict::class,
+            ValidateFromSelf::class,
+            Defaults::class,
+        ] as $class) {
+            self::attributeCoverage($class, '');
+        }
+        foreach ([InputKeyTo::class, OutputKeyTo::class] as $class) {
+            self::attributeCoverage($class, KeyCase::Camel);
         }
 
         $values = [
@@ -317,11 +317,12 @@ class DefaultTest extends TestCase
         $initialLevel = ob_get_level();
         ob_start();
         try {
-            (new Cacher())->scan($file, true);
-            StaticStatus::$properties = [];
-            StaticStatus::$refs       = [];
-            StaticStatus::$cachePath  = null;
-            StaticStatus::$cachedMeta = [];
+            (new Cacher())->scan($file);
+            $s               = &ImmutableBase::state();
+            $s['properties'] = [];
+            $s['refs']       = [];
+            $s['cachePath']  = null;
+            $s['cachedMeta'] = [];
             ImmutableBase::loadCache();
         } finally {
             while (ob_get_level() > $initialLevel) {
@@ -335,7 +336,8 @@ class DefaultTest extends TestCase
             if (file_exists($cacheFile)) {
                 unlink($cacheFile);
             }
-            StaticStatus::$cachedMeta = [];
+            $s               = &ImmutableBase::state();
+            $s['cachedMeta'] = [];
         }
     }
     public function testMissingRequiredPropertyAfterDefaultResolutionThrows()
@@ -351,14 +353,15 @@ class DefaultTest extends TestCase
         $initialLevel = ob_get_level();
         ob_start();
         try {
-            (new Cacher())->scan($file, true);
+            (new Cacher())->scan($file);
             if (!file_exists($cacheFile)) {
                 $this->fail('Cacher failed to create cache file.');
             }
-            StaticStatus::$properties = [];
-            StaticStatus::$refs       = [];
-            StaticStatus::$cachePath  = null;
-            StaticStatus::$cachedMeta = [];
+            $s               = &ImmutableBase::state();
+            $s['properties'] = [];
+            $s['refs']       = [];
+            $s['cachePath']  = null;
+            $s['cachedMeta'] = [];
             ImmutableBase::loadCache();
         } finally {
             while (ob_get_level() > $initialLevel) {
@@ -371,10 +374,11 @@ class DefaultTest extends TestCase
             if (file_exists($cacheFile)) {
                 unlink($cacheFile);
             }
-            StaticStatus::$cachedMeta = [];
+            $s               = &ImmutableBase::state();
+            $s['cachedMeta'] = [];
         }
     }
-    public function testLoadCacheSuccessfullyPopulatesStaticStatus()
+    public function testLoadCacheSuccessfullyPopulatesState()
     {
         $mockData = ['SomeClass' => ['methods' => [], 'properties' => []]];
 
@@ -383,12 +387,13 @@ class DefaultTest extends TestCase
             ->setContent('<?php return ' . var_export($mockData, true) . ';')
             ->url();
 
-        StaticStatus::$cachedMeta = [];
-        StaticStatus::$cachePath  = $cacheFile;
+        $s               = &ImmutableBase::state();
+        $s['cachedMeta'] = [];
+        $s['cachePath']  = $cacheFile;
 
         ImmutableBase::loadCache();
 
-        $this->assertSame($mockData, StaticStatus::$cachedMeta);
+        $this->assertSame($mockData, ImmutableBase::state()['cachedMeta']);
     }
 
     public function testInvalidValueWithThrowException()
@@ -415,13 +420,13 @@ class DefaultTest extends TestCase
     public function testEmptyArrayOfClassThrowInvalidArrayOfClassException()
     {
         $this->expectException(InvalidArrayOfTargetException::class);
-        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject.');
+        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject, or the enum.');
         EmptyArrayOfClassDTO::fromArray(['regulars' => []]);
     }
     public function testInvalidArrayOfClassThrowInvalidArrayOfClassException()
     {
         $this->expectException(InvalidArrayOfTargetException::class);
-        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject.');
+        $this->expectExceptionMessage('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject, or the enum.');
         InvalidArrayOfClassDTO::fromArray(['regulars' => []]);
     }
     public function testInvalidJsonThrowInvalidJsonException()
@@ -552,5 +557,14 @@ class DefaultTest extends TestCase
     {
         $this->expectException(InvalidArrayOfItemException::class);
         ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
+    }
+
+    private static function attributeCoverage(string $class, mixed $argument)
+    {
+        $ref         = new ReflectionClass($class);
+        $constructor = $ref->getConstructor();
+        $constructor->setAccessible(true); // NOSONAR
+        $instance = $ref->newInstanceWithoutConstructor(); // NOSONAR
+        $constructor->invoke($instance, $argument);
     }
 }

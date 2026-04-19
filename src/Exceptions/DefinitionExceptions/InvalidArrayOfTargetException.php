@@ -15,6 +15,6 @@ class InvalidArrayOfTargetException extends DefinitionException
 {
     public function __construct()
     {
-        parent::__construct('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject.');
+        parent::__construct('#[ArrayOf] target must be a subclass of DataTransferObject, ValueObject, or SingleValueObject, or the enum.');
     }
 }

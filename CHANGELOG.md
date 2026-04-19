@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [4.3.0] - 2026-04-19
+
+### Added
+
+- **`#[InputKeyTo(KeyCase::X)]`** — Input key case conversion. Apply at class level to remap all incoming array keys before hydration, or at property level to override for a specific property. Conversion splits on camelCase/PascalCase boundaries, underscores, hyphens, and whitespace, then rejoins in the target case.
+- **`#[OutputKeyTo(KeyCase::X)]`** — Output key case conversion. Apply at class level to remap all serialized keys during `toArray(true)` / `toJson(true)`, or at property level to override for a specific property.
+- **`KeyCase` enum** — 8 naming conventions: `Snake` (`nick_name`), `PascalSnake` (`Nick_Name`), `Macro` (`NICK_NAME`), `Camel` (`nickName`), `Pascal` (`NickName`), `Kebab` (`nick-name`), `CamelKebab` (`nick-Name`), `Train` (`Nick-Name`).
+- **`InvalidKeyCaseException`** — Thrown at definition time when `#[InputKeyTo]` or `#[OutputKeyTo]` receives a value that is not a `KeyCase` enum instance (e.g. a plain string).
+
 ## [4.2.2] - 2026-03-14
 
 ### Fixed

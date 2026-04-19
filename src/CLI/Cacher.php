@@ -12,7 +12,6 @@ use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
-use ReallifeKip\ImmutableBase\StaticStatus;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -51,13 +50,14 @@ class Cacher
      */
     public function scan(string $dir): void
     {
-        $outputPath     = StaticStatus::$cachePath ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
+        $s              = &ImmutableBase::state();
+        $outputPath     = $s['cachePath'] ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
         $exclude        = array_flip(['ref', 'validateMethod', 'hydrator']);
         $excludeType    = array_flip(['ref', 'typeRef', 'resolver', 'propertyRef']);
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];
         $this->indexDirectory($dir);
-        foreach (StaticStatus::$properties as $classname => $props) {
+        foreach ($s['properties'] as $classname => $props) {
             $entry = array_diff_key($props, $exclude);
             foreach ($entry['types'] as $name => $type) {
                 $clean = array_diff_key($type, $excludeType);
@@ -199,7 +199,7 @@ class Cacher
                 fwrite(STDERR, "\033[31m[Notice] $classname: '$property' not cacheable ($type). Will resolve at runtime only.\033[0m\n");
                 $default = null;
             }
-            StaticStatus::$properties[$classname]['types'][$name]['defaults'] = $default;
+            ImmutableBase::state()['properties'][$classname]['types'][$name]['defaults'] = $default;
         }
     }
     /**

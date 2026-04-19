@@ -602,6 +602,60 @@ try {
 
 VO、SVO 驗證鏈預設由繼承鏈頂層向下驗證到當前類，套用 `#[ValidateFromSelf]` 後，驗證鏈將改為從當前類開始向上驗證。
 
+### `#[InputKeyTo]` - 輸入 Key 命名轉換
+
+在注入前將輸入陣列的 key 轉換為指定的 `KeyCase` 命名規則。套用於類層級時，轉換所有 key；套用於屬性層級時，僅覆蓋該屬性的類層級設定。
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
+
+// 類層級：接受 snake_case 輸入 key（nick_name → nickName）
+#[InputKeyTo(KeyCase::Camel)]
+readonly class UserDTO extends DataTransferObject
+{
+    public string $nickName;
+}
+
+UserDTO::fromArray(['nick_name' => 'Kip']); // nickName = 'Kip'
+```
+
+### `#[OutputKeyTo]` - 輸出 Key 命名轉換
+
+序列化時，將屬性名稱轉換為指定的 `KeyCase` 命名規則。套用於類層級時，轉換所有序列化 key；套用於屬性層級時，僅覆蓋該屬性的類層級設定。
+
+`toArray()` / `toJson()` 的引數決定轉換行為：
+- `false`（預設）：不套用任何 key 轉換，屬性名稱原樣輸出
+- `true`：套用 `#[OutputKeyTo]` 定義的轉換，僅作用於當前層級，不向下滲透至巢狀物件（巢狀物件依各自的 `#[OutputKeyTo]` 宣告獨立運作）
+- `KeyCase::*`：忽略 `#[OutputKeyTo]`，以指定的 `KeyCase` 強制覆蓋所有 key
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Enums\KeyCase;
+
+// 類層級：將 nickName 序列化為 nick_name
+#[OutputKeyTo(KeyCase::Snake)]
+readonly class UserDTO extends DataTransferObject
+{
+    public string $nickName;
+}
+
+UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Kip']
+```
+
+可用的 `KeyCase` 值：
+
+| 命名規則 | 範例 |
+|---|---|
+| `KeyCase::Snake` | `nick_name` |
+| `KeyCase::PascalSnake` | `Nick_Name` |
+| `KeyCase::Macro` | `NICK_NAME` |
+| `KeyCase::Camel` | `nickName` |
+| `KeyCase::Pascal` | `NickName` |
+| `KeyCase::Kebab` | `nick-name` |
+| `KeyCase::CamelKebab` | `nick-Name` |
+| `KeyCase::Train` | `Nick-Name` |
+
 ---
 
 ## 設定
@@ -679,6 +733,8 @@ vendor/bin/ib-writer
 `InvalidArrayOfUsageException` - `#[ArrayOf]` 套用在非 `array` 型別的屬性上。
 
 `InvalidSpecException` - `#[Spec]` 未提供引數或引數為空。
+
+`InvalidKeyCaseException` - `#[InputKeyTo]` 或 `#[OutputKeyTo]` 接收到非 `KeyCase` enum 實例的值（例如傳入純字串而非 `KeyCase::Camel`）。
 
 `InvalidCompareTargetException` - `equals()` 的比較對象與自身類不同，或陣列中包含無法比較的非 ImmutableBase 物件。
 

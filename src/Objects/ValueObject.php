@@ -6,7 +6,6 @@ namespace ReallifeKip\ImmutableBase\Objects;
 
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
-use ReallifeKip\ImmutableBase\StaticStatus;
 use ReallifeKip\ImmutableBase\Types;
 
 /**
@@ -27,7 +26,7 @@ abstract readonly class ValueObject extends ImmutableBase
         self::executeSafely(function () use ($data) {
             if (!$this instanceof SingleValueObject) {
                 parent::__construct($data);
-                $cache = StaticStatus::$properties;
+                $cache = self::state()['properties'];
             } else {
                 $this->value = $data;
                 $cache       = $this::buildPropertyInheritanceChain($this);

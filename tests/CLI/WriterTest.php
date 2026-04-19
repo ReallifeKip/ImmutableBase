@@ -7,7 +7,7 @@ namespace Tests;
 use org\bovigo\vfs\vfsStream;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\CLI\Writer;
-use ReallifeKip\ImmutableBase\StaticStatus;
+use ReallifeKip\ImmutableBase\ImmutableBase;
 
 class WriterTest extends TestCase
 {
@@ -21,8 +21,8 @@ class WriterTest extends TestCase
     {
         Writer::$silent           = true;
         $this->outputDir          = sys_get_temp_dir() . '/ib_writer_test_' . uniqid();
-        $this->originalProperties = StaticStatus::$properties;
-        $this->originalRefs       = StaticStatus::$refs;
+        $this->originalProperties = ImmutableBase::state()['properties'];
+        $this->originalRefs       = ImmutableBase::state()['refs'];
         mkdir($this->outputDir, 0777, true);
     }
 
@@ -39,8 +39,9 @@ class WriterTest extends TestCase
             rmdir($this->outputDir);
         }
         // Restore original state
-        StaticStatus::$properties = $this->originalProperties;
-        StaticStatus::$refs       = $this->originalRefs;
+        $s               = &ImmutableBase::state();
+        $s['properties'] = $this->originalProperties;
+        $s['refs']       = $this->originalRefs;
     }
     public function testBasic(): void
     {
@@ -194,16 +195,18 @@ class WriterTest extends TestCase
     public function testGenerateResetsPropertiesAndRebuilds(): void
     {
         // Clear properties to force re-indexing
-        $savedProps               = StaticStatus::$properties;
-        StaticStatus::$properties = [];
+        $s               = &ImmutableBase::state();
+        $savedProps      = $s['properties'];
+        $s['properties'] = [];
 
         $outputFile = $this->outputDir . '/doc.mmd';
         Writer::generate('mmd', $outputFile);
 
         // Properties should be repopulated after generate
-        $this->assertNotEmpty(StaticStatus::$properties);
+        $this->assertNotEmpty(ImmutableBase::state()['properties']);
 
-        StaticStatus::$properties = $savedProps;
+        $s               = &ImmutableBase::state();
+        $s['properties'] = $savedProps;
     }
 
     public function testMermaidRelationsGenerated(): void
