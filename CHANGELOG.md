@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [4.3.0] - 2026-04-19
+## [v4.3.0] - 2026-04-19
 
 ### Added
 
@@ -9,7 +9,7 @@
 - **`KeyCase` enum** — 8 naming conventions: `Snake` (`nick_name`), `PascalSnake` (`Nick_Name`), `Macro` (`NICK_NAME`), `Camel` (`nickName`), `Pascal` (`NickName`), `Kebab` (`nick-name`), `CamelKebab` (`nick-Name`), `Train` (`Nick-Name`).
 - **`InvalidKeyCaseException`** — Thrown at definition time when `#[InputKeyTo]` or `#[OutputKeyTo]` receives a value that is not a `KeyCase` enum instance (e.g. a plain string).
 
-## [4.2.2] - 2026-03-14
+## [v4.2.2] - 2026-03-14
 
 ### Fixed
 
