@@ -448,8 +448,20 @@ class AttackTest extends TestCase
 
     public function testFromJsonWithArrayJsonThrows(): void
     {
-        $this->expectException(RequiredValueException::class);
+        $this->expectException(InvalidJsonException::class);
         AddressDTO::fromJson('[1,2,3]');
+    }
+
+    public function testFromJsonWithSingleElementListJsonThrows(): void
+    {
+        $this->expectException(InvalidJsonException::class);
+        AddressDTO::fromJson('[1]');
+    }
+
+    public function testFromJsonWithLeadingWhitespaceListJsonThrows(): void
+    {
+        $this->expectException(InvalidJsonException::class);
+        AddressDTO::fromJson('   [1,2,3]');
     }
 
     public function testDeepRoundTrip(): void

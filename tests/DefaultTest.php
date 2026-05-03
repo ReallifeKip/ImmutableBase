@@ -559,6 +559,64 @@ class DefaultTest extends TestCase
         ArrayOfDTO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
     }
 
+    public function testFromArrayWithJsonStringSubDtoSucceeds()
+    {
+        $extra = ExtraDTO::fromArray([
+            'string2'       => 'string2',
+            'dto'           => $this->json,
+            'unionClasses2' => SVO::from('x'),
+        ]);
+        $this->assertEquals(
+            DTO::fromArray($this->array)->toArray(),
+            $extra->dto->toArray(),
+        );
+    }
+
+    public function testFromArrayWithLeadingWhitespaceJsonStringSubDtoSucceeds()
+    {
+        $extra = ExtraDTO::fromArray([
+            'string2'       => 'string2',
+            'dto'           => '   ' . $this->json,
+            'unionClasses2' => SVO::from('x'),
+        ]);
+        $this->assertEquals(
+            DTO::fromArray($this->array)->toArray(),
+            $extra->dto->toArray(),
+        );
+    }
+
+    public function testFromArrayWithListRootedJsonStringSubDtoThrows()
+    {
+        $this->expectException(InvalidJsonException::class);
+        ExtraDTO::fromArray([
+            'string2'       => 'string2',
+            'dto'           => '[1,2,3]',
+            'unionClasses2' => SVO::from('x'),
+        ]);
+    }
+
+    public function testFromArrayWithMalformedJsonStringSubDtoThrows()
+    {
+        $this->expectException(InvalidJsonException::class);
+        ExtraDTO::fromArray([
+            'string2'       => 'string2',
+            'dto'           => '{garbage',
+            'unionClasses2' => SVO::from('x'),
+        ]);
+    }
+
+    public function testFromArrayWithJsonStringForUnionSubDtoSucceeds()
+    {
+        $union = UnionWithImmutableBaseTypeDTO::fromArray([
+            'mixed' => $this->json,
+        ]);
+        $this->assertInstanceOf(DTO::class, $union->mixed);
+        $this->assertEquals(
+            DTO::fromArray($this->array)->toArray(),
+            $union->mixed->toArray(),
+        );
+    }
+
     private static function attributeCoverage(string $class, mixed $argument)
     {
         $ref         = new ReflectionClass($class);

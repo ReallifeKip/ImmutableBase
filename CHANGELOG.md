@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [v4.3.1] - 2026-05-04
+
+### Fixed
+
+- **`fromJson()` list-rooted JSON rejection now matches the docblock contract.** Inputs that, after `trim`, begin with `[` and are not exactly `[]` throw `InvalidJsonException` at the start of `fromJson()`. Previously such inputs failed indirectly via downstream `RequiredValueException` during property resolution; catch sites that depended on the old exception type must be updated. The empty literal `[]` is intentionally permitted to preserve `toJson()` → `fromJson()` round-trips when `#[SkipOnNull]` empties an associative DTO (PHP's `json_encode([])` cannot disambiguate empty object from empty array).
+- **Sub-DTO JSON-string parsing symmetry.** Construction-path sub-DTO properties already accepted JSON-like strings via `buildResolver()`; the union dispatch path (`valueDecide()`) now applies the same `is_string && jsonLike => fromJson()` rule, eliminating the inconsistency where `Foo $foo` accepted `'{...}'` but `Foo|Bar $foo` rejected the same input.
+
 ## [v4.3.0] - 2026-04-19
 
 ### Added

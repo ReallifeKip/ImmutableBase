@@ -755,7 +755,7 @@ Thrown during construction (`fromArray`, `fromJson`) or mutation (`with`) when i
 
 `InvalidEnumValueException` - The value cannot be resolved to any case of the target Enum; both name lookup and `tryFrom()` failed.
 
-`InvalidJsonException` - JSON string decoding failed.
+`InvalidJsonException` - The JSON string cannot be parsed into an object: malformed JSON, or non-empty list-rooted JSON (e.g. `[1,2,3]`). The empty literal `[]` is permitted to preserve `toJson()` → `fromJson()` round-trips when `#[SkipOnNull]` empties an associative DTO.
 
 #### ValidationException - Validation Errors
 

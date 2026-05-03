@@ -754,7 +754,7 @@ vendor/bin/ib-writer
 
 `InvalidEnumValueException` - 值無法解析為目標 Enum 的任何 case，名稱查找及 `tryFrom()` 皆失敗。
 
-`InvalidJsonException` - JSON 字串解碼失敗。
+`InvalidJsonException` - JSON 字串無法解析為物件：JSON 格式錯誤，或為非空 list-rooted JSON（如 `[1,2,3]`）。空字面 `[]` 為例外允許，以保留 `#[SkipOnNull]` 將關聯式 DTO 清空後的 `toJson()` → `fromJson()` round-trip。
 
 #### ValidationException - 驗證錯誤
 

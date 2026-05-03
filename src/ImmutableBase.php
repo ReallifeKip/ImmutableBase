@@ -611,10 +611,11 @@ abstract readonly class ImmutableBase
             $type['isUnion']     => static fn(mixed $value)     => self::unionTypeDecide($type, $value),
             !$type['isBuiltin']  => match (true) {
                 $isSub  => static fn(mixed $value): mixed  => match (true) {
-                    \is_array($value)           => $typename::fromArray($value),
-                    $value instanceof $typename => $value,
-                    $isSVO                      => $typename::from($value),
-                    default                     => throw new InvalidValueException($typename, $value)
+                    \is_array($value)                            => $typename::fromArray($value),
+                    $value instanceof $typename                  => $value,
+                    $isSVO                                       => $typename::from($value),
+                    \is_string($value) && self::jsonLike($value) => $typename::fromJson($value),
+                    default                                      => throw new InvalidValueException($typename, $value)
                 },
                 default => static fn(mixed $value): mixed => match (true) {
                     $value instanceof $typename           => $value,
@@ -700,6 +701,7 @@ abstract readonly class ImmutableBase
                 (\is_string($value) || \is_int($value)) && $type['isEnum']             => self::analyzeEnum($typename, $value),
                 \is_array($value) && is_a($typename, self::class, true)                => $typename::fromArray($value),
                 is_a($typename, SingleValueObject::class, true) && !\is_object($value) => $typename::from($value),
+                \is_string($value) && self::jsonLike($value) && is_a($typename, self::class, true) => $typename::fromJson($value),
                 default                                                                => throw new InvalidValueException($typename, $value),
             };
         }
@@ -1073,6 +1075,11 @@ abstract readonly class ImmutableBase
      */
     final public static function fromJson(string $data): static
     {
+        $trimmed = trim($data);
+        if (($trimmed[0] ?? '') === '[' && $trimmed !== '[]') {
+            throw new InvalidJsonException();
+        }
+
         return new static(self::jsonParser($data, false));
     }
 
