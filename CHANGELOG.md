@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [v4.3.2] - 2026-05-04
+
+### Fixed
+
+- **Union type sequential resolution now falls through on `RequiredValueException`.**
+When resolving a union type (e.g. `AA|BB|CC`), `unionTypeDecide()` tries each
+member in declaration order and falls through on failure. Previously only
+`InvalidValueException`, `ValidationChainException`, and `InvalidEnumValueException`
+triggered fallthrough; a missing required property in one union candidate — e.g.
+`AA::fromArray(['b' => '123'])` when `$a` is mandatory — threw `RequiredValueException`
+which propagated up instead of attempting `BB` or `CC`. `RequiredValueException` is
+now included in the catch list. This was a regression introduced in v4.0.0-rc.1 when
+the catch was narrowed from `ImmutableBaseException` to a specific exception list.
+
+
 ## [v4.3.1] - 2026-05-04
 
 ### Fixed

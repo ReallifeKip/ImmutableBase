@@ -668,7 +668,7 @@ abstract readonly class ImmutableBase
         foreach ($unionType['types'] as $type) {
             try {
                 return self::valueDecide($type, $value);
-            } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException) {
+            } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException) {
                 continue;
             }
         }
@@ -697,12 +697,12 @@ abstract readonly class ImmutableBase
         $typename = $type['typename']['string'];
         if (!$type['isBuiltin']) {
             return match (true) {
-                $value instanceof $typename                                            => $value,
-                (\is_string($value) || \is_int($value)) && $type['isEnum']             => self::analyzeEnum($typename, $value),
-                \is_array($value) && is_a($typename, self::class, true)                => $typename::fromArray($value),
-                is_a($typename, SingleValueObject::class, true) && !\is_object($value) => $typename::from($value),
+                $value instanceof $typename                                                        => $value,
+                (\is_string($value) || \is_int($value)) && $type['isEnum']                         => self::analyzeEnum($typename, $value),
+                \is_array($value) && is_a($typename, self::class, true)                            => $typename::fromArray($value),
+                is_a($typename, SingleValueObject::class, true) && !\is_object($value)             => $typename::from($value),
                 \is_string($value) && self::jsonLike($value) && is_a($typename, self::class, true) => $typename::fromJson($value),
-                default                                                                => throw new InvalidValueException($typename, $value),
+                default                                                                            => throw new InvalidValueException($typename, $value),
             };
         }
         if (
