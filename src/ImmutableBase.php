@@ -388,29 +388,40 @@ abstract readonly class ImmutableBase
 
     /**
      * Validates and resolves the #[ArrayOf] attribute on a property.
-     * The target class must be an ImmutableBase descendant, and the property type must
-     * be exactly `array` (not a union or any other type).
+     * Each target class must be an ImmutableBase descendant or Native scalar.
+     * The property type must be exactly `array` (not a union or any other type).
      *
      * @param ReflectionProperty $property The property to inspect for #[ArrayOf].
      * @param ReflectionNamedType|ReflectionUnionType $refType The property's declared type, used to enforce the `array` constraint.
      * @throws InvalidArrayOfTargetException
      * @throws InvalidArrayOfUsageException
-     * @return non-empty-string|null
+     * @return list<non-empty-string>|null
      */
-    private static function resolveArrayOf(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $refType): ?string
+    private static function resolveArrayOf(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $refType): ?array
     {
-        $arg = self::getAttributeArgument($property, ArrayOf::class);
+        $args = self::getAttributeArgument($property, ArrayOf::class, false);
+        if ($args === null) {
+            return null;
+        }
+        if ($args === []) {
+            throw new InvalidArrayOfTargetException();
+        }
+        if ($refType instanceof ReflectionUnionType) {
+            throw new InvalidArrayOfUsageException($property->name, (string) $refType);
+        }
+        if ($refType->getName() !== 'array') {
+            throw new InvalidArrayOfUsageException($property->name, (string) $refType);
+        }
+        foreach ($args as $arg) {
+            $resolved[] = match (true) {
+                $arg instanceof Native         => $arg->value,
+                enum_exists($arg)              => $arg,
+                !is_a($arg, self::class, true) => throw new InvalidArrayOfTargetException(),
+                default                        => $arg,
+            };
+        }
 
-        return match (true) {
-            $arg === null                           => null,
-            $arg === []                             => throw new InvalidArrayOfTargetException(),
-            $arg instanceof Native                  => $arg->value,
-            enum_exists($arg)                       => $arg,
-            !is_a($arg, self::class, true)          => throw new InvalidArrayOfTargetException(),
-            $refType instanceof ReflectionUnionType => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
-            $refType->getName() !== 'array'         => throw new InvalidArrayOfUsageException($property->name, (string) $refType),
-            default                                 => $arg
-        };
+        return $resolved;
     }
 
     /**
@@ -513,23 +524,20 @@ abstract readonly class ImmutableBase
         );
     }
     /**
-     * Resolves an array property annotated with #[ArrayOf] into a typed array
-     * of ImmutableBase instances. Handles multiple input formats per element:
-     *   - Already an instance of the target class (passthrough)
-     *   - Associative array (fromArray)
-     *   - SVO-compatible scalar (from)
-     *   - Object (cast to array, then fromArray)
-     *   - JSON string (parse, then fromArray)
+     * Resolves an array property annotated with #[ArrayOf] into a typed array.
+     * For a single declared type, delegates directly to arrayOfInitializeSingle()
+     * (flags precomputed outside the loop). For multiple types, each element is
+     * attempted against each type in declaration order; first match wins.
      *
      * Empty arrays and non-array values are returned as-is to allow upstream
      * validation (e.g. nullable ArrayOf accepting null).
      *
-     * @param non-empty-string $arg The #[ArrayOf] target type (ImmutableBase subclass FQCN or Native::* scalar name).
+     * @param list<non-empty-string> $args The resolved #[ArrayOf] target types.
      * @param mixed $value The raw input value (array, JSON string, or passthrough for null).
      * @throws InvalidArrayOfItemException
      * @return mixed
      */
-    private static function arrayOfInitialize(string $arg, mixed $value): mixed
+    private static function arrayOfInitialize(array $args, mixed $value): mixed
     {
         if (\is_string($value)) {
             $value = self::jsonParser($value, false);
@@ -537,6 +545,39 @@ abstract readonly class ImmutableBase
         if (!\is_array($value) || empty($value)) {
             return $value;
         }
+        if (\count($args) === 1) {
+            return self::arrayOfInitializeSingle($args[0], $value);
+        }
+        foreach ($value as $k => $v) {
+            $matched = false;
+            foreach ($args as $arg) {
+                try {
+                    $values[] = self::resolveArrayOfItem($arg, $v, $k);
+                    $matched  = true;
+                    break;
+                } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException | InvalidArrayOfItemException) {
+                    continue;
+                }
+            }
+            if (!$matched) {
+                throw new InvalidArrayOfItemException($k, implode('|', $args));
+            }
+        }
+
+        return $values ?? [];
+    }
+
+    /**
+     * Single-type fast path for arrayOfInitialize(). Precomputes class/enum/SVO
+     * flags outside the loop to avoid repeated class_exists / is_a calls.
+     *
+     * @param non-empty-string $arg The resolved target type.
+     * @param non-empty-array<int|string, mixed> $value Already-validated non-empty array.
+     * @throws InvalidArrayOfItemException
+     * @return list<mixed>
+     */
+    private static function arrayOfInitializeSingle(string $arg, array $value): array
+    {
         $classExists = class_exists($arg);
         $isEnum      = $classExists && enum_exists($arg);
         $isSVO       = $classExists && is_a($arg, SingleValueObject::class, true);
@@ -560,6 +601,40 @@ abstract readonly class ImmutableBase
         }
 
         return $values ?? [];
+    }
+
+    /**
+     * Resolves a single array element against one candidate type.
+     * Used by the multi-type path in arrayOfInitialize(); throws on mismatch
+     * so the caller can try the next type.
+     *
+     * @param non-empty-string $arg The candidate type to attempt.
+     * @param mixed $v The element value to resolve.
+     * @param int|string $k The element index, used in exception messages.
+     * @throws InvalidArrayOfItemException
+     * @return mixed
+     */
+    private static function resolveArrayOfItem(string $arg, mixed $v, int | string $k): mixed
+    {
+        $classExists = class_exists($arg);
+        if (!$classExists) {
+            if (get_debug_type($v) === $arg) {
+                return $v;
+            }
+            throw new InvalidArrayOfItemException($k, $arg);
+        }
+        $isEnum = enum_exists($arg);
+        $isSVO  = !$isEnum && is_a($arg, SingleValueObject::class, true);
+
+        return match (true) {
+            $v instanceof $arg => $v,
+            \is_array($v)      => $arg::fromArray($v),
+            $isEnum            => self::analyzeEnum($arg, $v),
+            $isSVO             => $arg::from($v),
+            \is_object($v)     => $arg::fromArray((array) $v),
+            \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
+            default            => throw new InvalidArrayOfItemException($k, $arg)
+        };
     }
 
     /**
@@ -1221,7 +1296,7 @@ abstract readonly class ImmutableBase
                     [$root, $rest]             = self::parseDeepPath($path, $separator, $values);
                     $deepUpdates[$root][$rest] = $value;
                     $errorPath                 = $root;
-                } elseif (isset($values[$path], $types[$path])) {
+                } elseif (\array_key_exists($path, $values) && isset($types[$path])) {
                     $values[$path] = self::resolveValue($types[$path], $value, true);
                 }
             }

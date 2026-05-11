@@ -19,8 +19,9 @@ trait BasicTrait
      * of the first matching attribute instance. When false, returns the
      * full argument array of the first matching instance.
      *
-     * If the attribute is not present, or present without constructor
-     * arguments, `null` is returned.
+     * If the attribute is not present, `null` is returned.
+     * When `$getFirst` is true and the attribute has no arguments, `null` is returned.
+     * When `$getFirst` is false and the attribute has no arguments, `[]` is returned.
      *
      * @param ReflectionClass|ReflectionProperty $target Reflection target to inspect.
      * @param class-string $name Fully-qualified attribute class name.
@@ -30,12 +31,9 @@ trait BasicTrait
     public static function getAttributeArgument(ReflectionClass | ReflectionProperty $target, string $name, bool $getFirst = true): mixed
     {
         if ($value = $target->getAttributes($name)) {
-            $value = $value[0];
-            if ($value = $value->getArguments()) {
-                return $getFirst ? $value[0] : $value;
-            }
+            $value = $value[0]->getArguments();
 
-            return null;
+            return $getFirst ? ($value[0] ?? null) : $value;
         }
 
         return null;

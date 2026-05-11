@@ -487,6 +487,8 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 Marks an array property as a typed collection of ImmutableBase instances or primitive scalar values. Each element is automatically validated or instantiated. The target must be a subclass of DTO, VO, or SVO, or a `Native` enum case for scalar arrays.
 
+Pass multiple types for polymorphic arrays — each element is resolved in declaration order, first match wins.
+
 **Primitive scalar arrays** can be declared using `Native` enum cases instead of a class name:
 
 | Case             | PHP type |
@@ -501,7 +503,6 @@ use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 
 readonly class SignUpUsersDTO extends DataTransferObject
 {
-
     // ImmutableBase subclass
     #[ArrayOf(User::class)]
     public array $users;
@@ -511,6 +512,10 @@ readonly class SignUpUsersDTO extends DataTransferObject
     public array $tags;
     #[ArrayOf(Native::int)]
     public array $scores;
+
+    // Polymorphic — first match wins
+    #[ArrayOf(ShippingDTO::class, Native::string, PickupDTO::class, Native::int)]
+    public array $deliveries;
 }
 ```
 

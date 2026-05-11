@@ -5,6 +5,7 @@ namespace Tests\Attacks;
 
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
 use ReallifeKip\ImmutableBase\Exceptions\ImmutableBaseException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidEnumValueException;
@@ -30,8 +31,14 @@ use Tests\Attacks\Objects\ForbiddenTypes\UnionWithObjectDTO;
 use Tests\Attacks\Objects\KeepOnNullDTO;
 use Tests\Attacks\Objects\NullableArrayOfDTO;
 use Tests\DataTransferObjects\DTO;
+use Tests\DataTransferObjects\DTO1;
+use Tests\DataTransferObjects\DTO2;
 use Tests\DataTransferObjects\ExtraDTO;
 use Tests\DataTransferObjects\InvalidTypeArrayOfDTO;
+use Tests\DataTransferObjects\ArrayOfOnUnionDTO;
+use Tests\DataTransferObjects\EmptyArgsArrayOfDTO;
+use Tests\DataTransferObjects\MultiArrayOfDTO;
+use Tests\DataTransferObjects\MultiArrayOfWithNativeDTO;
 use Tests\DataTransferObjects\StrictDTO;
 use Tests\SingleValueObjects\GmailSVO;
 use Tests\SingleValueObjects\MailSVO;
@@ -115,7 +122,7 @@ class AttackTest extends TestCase
 
     public function testArrayOfOnStringProperty(): void
     {
-        $this->expectException(InvalidArrayOfTargetException::class);
+        $this->expectException(InvalidArrayOfUsageException::class);
         InvalidTypeArrayOfDTO::fromArray(['regulars' => []]);
     }
 
@@ -594,5 +601,75 @@ class AttackTest extends TestCase
         unset($data['nullableString']);
         $dto = DTO::fromArray($data);
         $this->assertNull($dto->nullableString);
+    }
+
+    public function testMultiArrayOf_PolymorphicHappyPath(): void
+    {
+        $dto = MultiArrayOfDTO::fromArray([
+            'items' => [
+                ['string1' => 'hello'],
+                ['string2' => 'world'],
+            ],
+        ]);
+        $this->assertCount(2, $dto->items);
+        $this->assertInstanceOf(DTO1::class, $dto->items[0]);
+        $this->assertInstanceOf(DTO2::class, $dto->items[1]);
+        $this->assertSame('hello', $dto->items[0]->string1);
+        $this->assertSame('world', $dto->items[1]->string2);
+    }
+
+    public function testMultiArrayOf_FirstMatchWins(): void
+    {
+        // Both DTO1 and DTO2 could theoretically match if extra keys are ignored;
+        // verify DTO1 is always tried first and wins when it succeeds.
+        $dto = MultiArrayOfDTO::fromArray([
+            'items' => [
+                ['string1' => 'first'],
+            ],
+        ]);
+        $this->assertInstanceOf(DTO1::class, $dto->items[0]);
+    }
+
+    public function testMultiArrayOf_AllCandidatesFail_ThrowsInvalidArrayOfItemException(): void
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        MultiArrayOfDTO::fromArray([
+            'items' => [42],
+        ]);
+    }
+
+    public function testArrayOfWithNoArgs_ThrowsInvalidArrayOfTargetException(): void
+    {
+        $this->expectException(InvalidArrayOfTargetException::class);
+        EmptyArgsArrayOfDTO::fromArray(['items' => []]);
+    }
+
+    public function testArrayOfOnUnionType_ThrowsInvalidArrayOfUsageException(): void
+    {
+        $this->expectException(InvalidArrayOfUsageException::class);
+        ArrayOfOnUnionDTO::fromArray(['items' => 'x']);
+    }
+
+    public function testMultiArrayOfWithNative_NativeIntMatch(): void
+    {
+        $dto = MultiArrayOfWithNativeDTO::fromArray(['items' => [42, 7]]);
+        $this->assertSame([42, 7], $dto->items);
+    }
+
+    public function testMultiArrayOfWithNative_AllCandidatesFail_ThrowsInvalidArrayOfItemException(): void
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        MultiArrayOfWithNativeDTO::fromArray(['items' => [3.14]]);
+    }
+
+    public function testWithUpdatesNullablePropertyCurrentlyNull(): void
+    {
+        $dto = NullableArrayOfDTO::fromArray(['items' => null]);
+        $this->assertNull($dto->items);
+
+        $updated = $dto->with(['items' => [['sku' => 'A', 'quantity' => 1, 'price' => 5.0]]]);
+        $this->assertCount(1, $updated->items);
+        $this->assertInstanceOf(OrderItemDTO::class, $updated->items[0]);
+        $this->assertNull($dto->items);
     }
 }

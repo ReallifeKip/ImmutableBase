@@ -25,15 +25,16 @@ abstract class Typescript
     /**
      * Maps a PHP type to its TypeScript equivalent.
      *
-     * Handles primitive types, 'mixed', and 'array' (with optional element type).
+     * Handles primitive types, 'mixed', and 'array' (with optional element type(s)).
      * Non-builtin types (classes, enums) are converted from backslash (\)
      * to dot (.) notation for TS namespace compatibility.
+     * Multi-type ArrayOf renders as `(TypeA | TypeB)[]`.
      *
      * @param string $phpType The PHP type name (e.g., 'int', 'array', or a FQCN).
-     * @param class-string|null $arrayOf The target class/type if the $phpType is 'array'.
+     * @param list<string>|null $arrayOf The resolved target types if the $phpType is 'array'.
      * @return string The mapped TypeScript type representation.
      */
-    private static function phpTypeToTs(string $phpType, ?string $arrayOf = null): string
+    private static function phpTypeToTs(string $phpType, ?array $arrayOf = null): string
     {
         $map = static fn(string $type) => match ($type) {
             'string' => 'string',
@@ -43,7 +44,14 @@ abstract class Typescript
             default  => str_replace('\\', '.', $type),
         };
         if ($phpType === 'array') {
-            return ($arrayOf ? $map($arrayOf) : 'unknown') . '[]';
+            if ($arrayOf === null) {
+                return 'unknown[]';
+            }
+            if (\count($arrayOf) === 1) {
+                return $map($arrayOf[0]) . '[]';
+            }
+
+            return '(' . implode(' | ', array_map($map, $arrayOf)) . ')[]';
         }
 
         return $map($phpType);

@@ -253,6 +253,33 @@ class WriterTest extends TestCase
             unlink($outputFile);
         }
     }
+    public function testTypescriptMultiTypeArrayOfRendersUnionArray(): void
+    {
+        $method = new \ReflectionMethod(\ReallifeKip\ImmutableBase\CLI\writer\Typescript::class, 'phpTypeToTs');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'array', ['Foo\\DTO1', 'Foo\\DTO2']);
+        $this->assertSame('(Foo.DTO1 | Foo.DTO2)[]', $result);
+    }
+
+    public function testTypescriptSingleTypeArrayOfRendersPlainArray(): void
+    {
+        $method = new \ReflectionMethod(\ReallifeKip\ImmutableBase\CLI\writer\Typescript::class, 'phpTypeToTs');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'array', ['Foo\\DTO1']);
+        $this->assertSame('Foo.DTO1[]', $result);
+    }
+
+    public function testTypescriptNoArrayOfRendersUnknownArray(): void
+    {
+        $method = new \ReflectionMethod(\ReallifeKip\ImmutableBase\CLI\writer\Typescript::class, 'phpTypeToTs');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'array', null);
+        $this->assertSame('unknown[]', $result);
+    }
+
     public function testParseUnreadableFileReturnsNull(): void
     {
         $root = vfsStream::setup('testDir');

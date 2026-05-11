@@ -25,7 +25,7 @@ use ReflectionType;
  *     ref: ReflectionType,
  *     propertyRef: ReflectionProperty,
  *     allowsNull: bool,
- *     arrayOf: class-string|null,
+ *     arrayOf: list<non-empty-string>|null,
  *     propertyName: string,
  *     inputKeyCase: KeyCase|null,
  *     hasInputKeyOverride: bool,

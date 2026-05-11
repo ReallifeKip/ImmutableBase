@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## [v4.4.0] - 2026-05-12
+
+### Added
+
+- **`#[ArrayOf]` now supports multiple types (polymorphic typed arrays).** Pass two or more class-strings or `Native` cases; each element is resolved against the declared types in declaration order — first successful match wins. Single-type usage is fully backwards compatible.
+
+  ```php
+  #[ArrayOf(ShippingDTO::class, PickupDTO::class)]
+  public array $deliveries;
+
+  #[ArrayOf(DTO1::class, Native::int)]
+  public array $mixed;
+  ```
+
+  > **Note:** The `ArrayOf` attribute's internal property has been renamed from `$class` (`string`) to `$classes` (`array`). If you inspect `ArrayOf` via `ReflectionAttribute::newInstance()`, update `->class` to `->classes[0]`.
+
+### Fixed
+
+- **`with()` silently ignored updates to nullable properties currently holding `null`.** The `isset($values[$path])` check in the flat-path loop returned `false` when an existing property value was `null`, causing the update to be skipped entirely. Replaced with `array_key_exists($path, $values)` so updates to null-valued properties are applied correctly.
+
+- **`#[ArrayOf()]` with no arguments now throws `InvalidArrayOfTargetException` at scan time.** Previously, the empty-argument case was silently ignored because `getAttributeArgument` collapsed empty attribute arguments to `null` via a truthiness check. The check has been corrected to distinguish "attribute absent" (`null`) from "attribute present with no arguments" (`[]`).
+
 ## [v4.3.2] - 2026-05-04
 
 ### Fixed

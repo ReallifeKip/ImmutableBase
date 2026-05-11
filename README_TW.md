@@ -487,6 +487,8 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 將陣列屬性標記為 ImmutableBase 實例或純量值的型別集合。每個元素會自動驗證或實例化。目標必須是 DTO、VO 或 SVO 的子類，或純量陣列可使用 `Native` enum case。
 
+傳入多個型別可宣告多型陣列——每個元素依宣告順序逐一嘗試，首個成功配對的型別勝出。
+
 **純量型別陣列**可使用 `Native` enum case 取代類別名稱：
 
 | Case             | PHP 型別 |
@@ -510,6 +512,10 @@ readonly class SignUpUsersDTO extends DataTransferObject
     public array $tags;
     #[ArrayOf(Native::int)]
     public array $scores;
+
+    // 多型——首個成功配對的型別勝出
+    #[ArrayOf(ShippingDTO::class, Native::string, PickupDTO::class, Native::int)]
+    public array $deliveries;
 }
 ```
 
