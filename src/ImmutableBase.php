@@ -136,8 +136,7 @@ abstract readonly class ImmutableBase
     protected function __construct(array $data = [])
     {
         self::executeSafely(function ($static, &$errorPath) use ($data) {
-            $s        = &self::state();
-            $defaults = static::defaultValues();
+            $s = &self::state();
             if (!isset($s['properties'][$static])) {
                 $this::buildPropertyInheritanceChain($this);
             }
@@ -154,7 +153,16 @@ abstract readonly class ImmutableBase
             ) {
                 throw new StrictViolationException($class['name'], $redundant);
             }
-            $class['hydrator']($this, self::resolvePropertyData($data, $class['types'], $defaults, $errorPath));
+            $compiled = array_filter(array_map(fn($t) => $t['defaults'] ?? null, $class['types']), fn($v) => $v !== null);
+            $data     = array_merge($compiled, $data);
+            foreach ($class['classTreeReversed'] as $classname) {
+                $ref = $s['properties'][$classname] ?? null;
+                if ($ref === null || !($ref['hasPrepareInput'] ?? false)) {
+                    continue;
+                }
+                $data = array_merge($data, array_intersect_key($classname::prepareInput($data), $data));
+            }
+            $class['hydrator']($this, self::resolvePropertyData($data, $class['types'], $errorPath));
         });
     }
     /**
@@ -225,20 +233,15 @@ abstract readonly class ImmutableBase
      *
      * @param array<string, mixed>  $data      Input array, mutated in place when a default is injected.
      * @param array<string, Type>   $types     Compiled property type metadata from scanProperties().
-     * @param array<string, mixed>  $defaults  Default values returned by defaultValues().
      * @param string|null           $errorPath Reference updated to the current property name for error context.
      * @return array<string, mixed> Resolved property values keyed by property name.
      */
-    private static function resolvePropertyData(array &$data, array $types, array $defaults,  ? string &$errorPath) : array
+    private static function resolvePropertyData(array &$data, array $types, ?string &$errorPath): array
     {
         foreach ($types as $type) {
             $name = $errorPath = $type['propertyName'];
             if (!\array_key_exists($name, $data)) {
-                $data[$name] = $type['defaults'] ?? match (true) {
-                    \array_key_exists($name, $defaults) => $defaults[$name],
-                    isset($type['propertyRef'])         => self::getAttributeArgument($type['propertyRef'], Defaults::class),
-                    default                             => null
-                };
+                $data[$name] = $type['defaults'] ?? (isset($type['propertyRef']) ? self::getAttributeArgument($type['propertyRef'], Defaults::class) : null);
             }
             match (true) {
                 !isset($data[$name]) && !$type['allowsNull'] => throw new RequiredValueException($name),
@@ -294,9 +297,10 @@ abstract readonly class ImmutableBase
                 throw new InvalidSpecException($classname);
             }
         }
-        $hasValidate = $isDTO ? false : $ref->hasMethod('validate');
-        $classTree   = [$classname => $classname] + class_parents($classname);
-        $prop        = [
+        $hasValidate     = $isDTO ? false : $ref->hasMethod('validate');
+        $hasPrepareInput = $ref->hasMethod('prepareInput') && $ref->getMethod('prepareInput')->getDeclaringClass()->name === $classname;
+        $classTree       = [$classname => $classname] + class_parents($classname);
+        $prop            = [
             'ref'               => $ref,
             'name'              => $classname,
             'isStrict'          => $ref->getAttributes(Strict::class) !== [],
@@ -307,6 +311,7 @@ abstract readonly class ImmutableBase
             'validateFromSelf'  => $ref->getAttributes(ValidateFromSelf::class) !== [],
             'skipOnNull'        => $ref->getAttributes(SkipOnNull::class) !== [],
             'hasValidate'       => $hasValidate,
+            'hasPrepareInput'   => $hasPrepareInput,
             'validateMethod'    => $hasValidate ? $ref->getMethod('validate') : false,
             'spec'              => $spec ?? null,
             'classTree'         => $classTree,
@@ -1347,6 +1352,19 @@ abstract readonly class ImmutableBase
      *
      * @return array<property-string, mixed>
      */
+    /**
+     * Hook to preprocess, inject, or transform input data before property resolution.
+     * Called after key remapping (#[InputKeyTo]), before type resolution and hydration.
+     * Override in subclasses to normalize values, derive fields, or inject context.
+     *
+     * @param array<string, mixed> $data Remapped input data
+     * @return array<string, mixed>
+     */
+    protected static function prepareInput(array $data): array
+    {
+        return [];
+    }
+
     public static function defaultValues(): array
     {
         return [];
