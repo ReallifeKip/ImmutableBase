@@ -224,6 +224,41 @@ $signUp = SignUpUsersDTO::fromArray([
 ]);
 ```
 
+---
+
+## 生命週期
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'background': '#0d1117', 'mainBkg': '#0d1117'}}}%%
+flowchart TD
+    classDef input fill:#0d1117,color:#79c0ff,stroke:#388bfd,stroke-width:2px
+    classDef constructor fill:#0d1117,color:#ffa657,stroke:#d29922,stroke-width:2px
+    classDef defaults fill:#0d1117,color:#d2a8ff,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4
+    classDef prepare fill:#0d1117,color:#d2a8ff,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4
+    classDef validate fill:#0d1117,color:#56d364,stroke:#3fb950,stroke-width:1px,stroke-dasharray:4
+    classDef output fill:#0d1117,color:#ff7b72,stroke:#f85149,stroke-width:2px
+
+    R([raw data]):::input
+
+    R -->|array / json| F1
+    R -->|scalar only| F2
+
+    F1["fromArray() / fromJson()\n― DTO / VO ―"]:::constructor
+    F2["from()\n― SVO ―"]:::constructor
+
+    F1 & F2 --> DEF1
+
+    DEF1["#[Defaults]"]:::defaults
+    DEF1 --> DEF2
+    DEF2["defaultValues()"]:::defaults
+
+    DEF2 --> P["prepareInput()"]:::prepare
+
+    P -->|DTO| I([instance]):::output
+    P -->|VO / SVO| VAL["validate()"]:::defaults
+    VAL --> I
+```
+
 > 🔗 想快速嘗試？[JSON to ImmutableBase Converter](https://json-to-immutablebase-object-converter.reallife-kip.com) 讓你貼上 JSON 就能快速產出 ImmutableBase 物件！
 
 ---
@@ -462,6 +497,69 @@ Config::fromArray(['theme' => 'light']); // theme = 'light' （明確傳入值 �
 ### SVO 限制
 
 `SingleValueObject` 不支援預設值，SVO 在設計上要求透過 `from()` 明確傳入值，`defaultValues()` 在 `SingleValueObject` 上以 `final` 封閉，始終回傳空陣列。
+
+---
+
+## 預處理
+
+可在 hydration 之前對輸入值進行正規化、轉換或衍生。執行時機：所有 defaults 合併完成後、型別解析之前。
+
+```php
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $email;
+    #[Defaults('member')]
+    public string $role;
+
+    protected static function prepareInput(array $data): array
+    {
+        return ['email' => strtolower(trim($data['email']))];
+    }
+}
+
+CreateUserDTO::fromArray(['email' => '  BILL@EXAMPLE.COM  ']);
+// email = 'bill@example.com', role = 'member'
+```
+
+### 行為說明
+
+**`$data` 已包含 defaults。** `defaultValues()` 與 `#[Defaults]` 的值在 `prepareInput()` 呼叫前已合併進 `$data`，可直接讀取並轉換。
+
+**幽靈 key 注入會被阻擋。** 只有 `$data` 中已存在的 key 才會被回寫，回傳新 key 會被靜默忽略。
+
+```php
+protected static function prepareInput(array $data): array
+{
+    return [
+        'email'   => strtolower($data['email']),
+        'phantom' => 'injected',   // 被忽略 —— 'phantom' 不是屬性
+    ];
+}
+```
+
+**繼承鏈依序疊加。** 每個自行宣告 `prepareInput()` 的類別都會執行，順序從 root 到 concrete，父層的輸出作為子層的輸入。
+
+```php
+readonly class ParentDTO extends DataTransferObject
+{
+    public string $name;
+
+    protected static function prepareInput(array $data): array
+    {
+        return ['name' => trim($data['name'])];
+    }
+}
+
+readonly class ChildDTO extends ParentDTO
+{
+    protected static function prepareInput(array $data): array
+    {
+        return ['name' => strtoupper($data['name'])];  // 在父層 trim 之後執行
+    }
+}
+```
+
+**`with()` 不執行 `prepareInput()`。** `prepareInput()` 的設計情境是清洗不可信的外部輸入（HTTP、CSV、API payload）。`with()` 是開發者在程式碼中主動操作物件，呼叫者本身就是受信任的一方，「事前準備」的語意在此不適用。
 
 ---
 

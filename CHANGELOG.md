@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## [v4.5.0] - 2026-05-28
+
+### Added
+
+- **`prepareInput()` — input preprocessing before hydration.** Declare `protected static prepareInput(array $data): array` in any subclass to normalize, transform, or derive input values. Runs after `defaultValues()` and `#[Defaults]` are merged, before type resolution and hydration.
+
+  ```php
+  readonly class CreateUserDTO extends DataTransferObject
+  {
+      public string $email;
+      #[Defaults('member')]
+      public string $role;
+
+      protected static function prepareInput(array $data): array
+      {
+          return ['email' => strtolower(trim($data['email']))];
+      }
+  }
+  ```
+
+  Key behaviors:
+  - `$data` already contains merged defaults at call time — both `defaultValues()` and `#[Defaults]` values are visible and transformable.
+  - Only keys already present in `$data` are written back (`array_intersect_key` guard prevents phantom-property injection).
+  - Each class in the inheritance chain that declares its own `prepareInput()` runs in order from root to concrete class, so parent transforms apply before child transforms.
+  - `with()` does not invoke `prepareInput()` — preparation applies only to untrusted external input; `with()` callers are trusted code.
+
 ## [v4.4.0] - 2026-05-12
 
 ### Added

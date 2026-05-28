@@ -224,6 +224,41 @@ $signUp = SignUpUsersDTO::fromArray([
 ]);
 ```
 
+---
+
+## Life Cycle
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'background': '#0d1117', 'mainBkg': '#0d1117'}}}%%
+flowchart TD
+    classDef input fill:#0d1117,color:#79c0ff,stroke:#388bfd,stroke-width:2px
+    classDef constructor fill:#0d1117,color:#ffa657,stroke:#d29922,stroke-width:2px
+    classDef defaults fill:#0d1117,color:#d2a8ff,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4
+    classDef prepare fill:#0d1117,color:#d2a8ff,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4
+    classDef validate fill:#0d1117,color:#56d364,stroke:#3fb950,stroke-width:1px,stroke-dasharray:4
+    classDef output fill:#0d1117,color:#ff7b72,stroke:#f85149,stroke-width:2px
+
+    R([raw data]):::input
+
+    R -->|array / json| F1
+    R -->|scalar only| F2
+
+    F1["fromArray() / fromJson()\n― DTO / VO ―"]:::constructor
+    F2["from()\n― SVO ―"]:::constructor
+
+    F1 & F2 --> DEF1
+
+    DEF1["#[Defaults]"]:::defaults
+    DEF1 --> DEF2
+    DEF2["defaultValues()"]:::defaults
+
+    DEF2 --> P["prepareInput()"]:::prepare
+
+    P -->|DTO| I([instance]):::output
+    P -->|VO / SVO| VAL["validate()"]:::defaults
+    VAL --> I
+```
+
 > 🔗 Want a quick try? [JSON to ImmutableBase Converter](https://json-to-immutablebase-object-converter.reallife-kip.com) lets you paste JSON and generate IB classes instantly!
 
 ---
@@ -462,6 +497,69 @@ Config::fromArray(['theme' => 'light']); // theme = 'light' (explicit value → 
 ### SVO Restriction
 
 `SingleValueObject` does not support default values. SVOs require an explicit value via `from()` by design. The `defaultValues()` method is sealed (`final`) on `SingleValueObject` and always returns an empty array.
+
+---
+
+## Preprocessing
+
+Normalize, transform, or derive input values before hydration. Runs after all defaults are merged, before type resolution.
+
+```php
+readonly class CreateUserDTO extends DataTransferObject
+{
+    public string $email;
+    #[Defaults('member')]
+    public string $role;
+
+    protected static function prepareInput(array $data): array
+    {
+        return ['email' => strtolower(trim($data['email']))];
+    }
+}
+
+CreateUserDTO::fromArray(['email' => '  BILL@EXAMPLE.COM  ']);
+// email = 'bill@example.com', role = 'member'
+```
+
+### Key Behaviors
+
+**`$data` already contains defaults.** Both `defaultValues()` and `#[Defaults]` values are merged into `$data` before `prepareInput()` is called — you can read and transform them.
+
+**Phantom-key injection is blocked.** Only keys already present in `$data` are written back. Returning a new key from `prepareInput()` is silently ignored.
+
+```php
+protected static function prepareInput(array $data): array
+{
+    return [
+        'email'   => strtolower($data['email']),
+        'phantom' => 'injected',   // ignored — 'phantom' is not a property
+    ];
+}
+```
+
+**Inheritance chain stacks.** Each class in the hierarchy that declares its own `prepareInput()` runs in order from root to concrete. The parent's output feeds into the child's input.
+
+```php
+readonly class ParentDTO extends DataTransferObject
+{
+    public string $name;
+
+    protected static function prepareInput(array $data): array
+    {
+        return ['name' => trim($data['name'])];
+    }
+}
+
+readonly class ChildDTO extends ParentDTO
+{
+    protected static function prepareInput(array $data): array
+    {
+        return ['name' => strtoupper($data['name'])];  // runs after parent trim
+    }
+}
+```
+
+**`with()` does not run `prepareInput()`.** `prepareInput()` is designed to sanitize untrusted external input (HTTP, CSV, API payloads). `with()` is a programmatic mutation by the developer, who is already the trusted caller — preparation is not applicable.
 
 ---
 
