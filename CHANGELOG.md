@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [v4.5.1] - 2026-05-29
+
+### Fixed
+
+- **`ib-cacher` discarded Enum case default values, causing `RequiredValueException` at runtime.**
+  `Cacher::containsNonSerializable()` treated any object as non-serializable via a bare `is_object()` check, including Enum cases. Defaults declared in `defaultValues()` as Enum cases were silently replaced with `null` in the generated cache. At runtime there is no fallback to re-invoke `defaultValues()`, so any property with `allowsNull = false` and an Enum default would throw `RequiredValueException` whenever a cache file was present — even though the same call succeeded without a cache.
+
+  Fixed by checking `instanceof \UnitEnum` before `is_object()`. PHP 8.1+ `var_export()` serializes all Enum cases (backed and pure) as `\ClassName::CaseName`, which is a valid PHP expression that reconstructs the correct case on `require`.
+
 ## [v4.5.0] - 2026-05-28
 
 ### Added

@@ -236,6 +236,52 @@ class CacherTest extends TestCase
         $this->assertEmpty(ImmutableBase::state()['cachedMeta']);
     }
 
+    public function testEnumCaseDefaultIsPreservedInCache(): void
+    {
+        $initialLevel = ob_get_level();
+        try {
+            ob_start();
+            (new Cacher())->scan($this->scanDir);
+        } finally {
+            while (ob_get_level() > $initialLevel) {
+                ob_end_clean();
+            }
+        }
+
+        $cache         = require $this->cachePath;
+        $statusDefault = $cache[\Tests\Bugs\MinimalDTO::class]['types']['status']['defaults'] ?? 'missing';
+
+        $this->assertInstanceOf(
+            \Tests\Bugs\StatusEnum::class,
+            $statusDefault,
+            'Enum case default must be preserved in cache, not replaced with null'
+        );
+        $this->assertSame(\Tests\Bugs\StatusEnum::Active, $statusDefault);
+    }
+
+    public function testEnumCaseDefaultWorksAfterLoadingCache(): void
+    {
+        $initialLevel = ob_get_level();
+        try {
+            ob_start();
+            (new Cacher())->scan($this->scanDir);
+        } finally {
+            while (ob_get_level() > $initialLevel) {
+                ob_end_clean();
+            }
+        }
+
+        $s               = &ImmutableBase::state();
+        $s['cachedMeta'] = [];
+        $s['cachePath']  = null;
+        $s['properties'] = [];
+        $s['refs']       = [];
+        ImmutableBase::loadCache();
+
+        $dto = \Tests\Bugs\MinimalDTO::fromArray([]);
+        $this->assertSame(\Tests\Bugs\StatusEnum::Active, $dto->status);
+    }
+
     public function testCachedMetaRestoredDuringBuild(): void
     {
         $initialLevel = ob_get_level();

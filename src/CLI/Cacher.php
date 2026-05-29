@@ -217,6 +217,9 @@ class Cacher
      */
     private static function containsNonSerializable(mixed $value): bool
     {
+        if ($value instanceof \UnitEnum) {
+            return false;
+        }
         if (\is_object($value)) {
             return true;
         }
