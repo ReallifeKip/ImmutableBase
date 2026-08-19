@@ -146,9 +146,15 @@ class ValueObjectTest extends TestCase
         $this->expectException(InvalidArrayOfItemException::class);
         ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['strings' => [['nested']]]));
     }
+    public function testArrayOfNativeFloatWidensInt()
+    {
+        $obj = ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
+        $this->assertSame([1.0], $obj->floats);
+    }
+
     public function testInvalidArrayOfNativeBoolException()
     {
         $this->expectException(InvalidArrayOfItemException::class);
-        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['floats' => [1]]));
+        ArrayOfVO::fromArray(array_merge($this->arrayOfData, ['bools' => [1]]));
     }
 }

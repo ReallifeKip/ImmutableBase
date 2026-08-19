@@ -31,6 +31,8 @@ use Tests\Attacks\Objects\ForbiddenTypes\UnionWithObjectDTO;
 use Tests\Attacks\Objects\KeepOnNullDTO;
 use Tests\Attacks\Objects\NullableArrayOfDTO;
 use Tests\DataTransferObjects\DTO;
+use Tests\DataTransferObjects\UnionFloatWithoutIntDTO;
+use Tests\DataTransferObjects\ArrayOfFloatDTO;
 use Tests\DataTransferObjects\DTO1;
 use Tests\DataTransferObjects\DTO2;
 use Tests\DataTransferObjects\ExtraDTO;
@@ -351,10 +353,68 @@ class AttackTest extends TestCase
         $this->assertNull($dto->nullablePriority);
     }
 
-    public function testIntGivenToFloatProperty(): void
+    public function testIntGivenToFloatPropertyWidens(): void
+    {
+        $dto = DTO::fromArray(array_merge($this->baseArray, ['float' => 1]));
+        $this->assertSame(1.0, $dto->float);
+    }
+
+    public function testIntGivenToNullableFloatPropertyWidens(): void
+    {
+        $dto = DTO::fromArray(array_merge($this->baseArray, ['nullableFloat' => 1]));
+        $this->assertSame(1.0, $dto->nullableFloat);
+    }
+
+    public function testIntGivenToUnionWithIntAndFloatStaysInt(): void
+    {
+        $dto = DTO::fromArray(array_merge($this->baseArray, ['union' => 1]));
+        $this->assertSame(1, $dto->union);
+    }
+
+    public function testIntGivenToUnionWithFloatButNoIntWidens(): void
+    {
+        $dto = UnionFloatWithoutIntDTO::fromArray(['widened' => 1, 'notWidened' => true]);
+        $this->assertSame(1.0, $dto->widened);
+    }
+
+    public function testIntGivenToUnionWithoutFloatStillThrows(): void
     {
         $this->expectException(InvalidValueException::class);
-        DTO::fromArray(array_merge($this->baseArray, ['float' => 1]));
+        UnionFloatWithoutIntDTO::fromArray(['widened' => 1.5, 'notWidened' => 1]);
+    }
+
+    public function testArrayOfFloatAndIntPrefersExactIntMatch(): void
+    {
+        $dto = ArrayOfFloatDTO::fromArray(self::arrayOfFloatBase(['floatOrInt' => [1, 2.5]]));
+        $this->assertSame([1, 2.5], $dto->floatOrInt);
+        $this->assertSame(['int', 'float'], array_map(get_debug_type(...), $dto->floatOrInt));
+    }
+
+    public function testArrayOfFloatAndStringWidensIntWhenNoIntTarget(): void
+    {
+        $dto = ArrayOfFloatDTO::fromArray(self::arrayOfFloatBase(['floatOrString' => [1, 'a']]));
+        $this->assertSame([1.0, 'a'], $dto->floatOrString);
+    }
+
+    public function testArrayOfMultiTargetRejectsUnmatchedItem(): void
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        ArrayOfFloatDTO::fromArray(self::arrayOfFloatBase(['floatOrInt' => [true]]));
+    }
+
+    /**
+     * @param array<string, list<mixed>> $override
+     * @return array<string, list<mixed>>
+     */
+    private static function arrayOfFloatBase(array $override): array
+    {
+        return array_merge(['floatOrInt' => [1.5], 'floatOrString' => [1.5]], $override);
+    }
+
+    public function testArrayOfIntStillRejectsFloat(): void
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        MultiArrayOfWithNativeDTO::fromArray(['items' => [1.5]]);
     }
 
     public function testFloatGivenToIntProperty(): void

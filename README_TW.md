@@ -585,7 +585,18 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 將陣列屬性標記為 ImmutableBase 實例或純量值的型別集合。每個元素會自動驗證或實例化。目標必須是 DTO、VO 或 SVO 的子類，或純量陣列可使用 `Native` enum case。
 
-傳入多個型別可宣告多型陣列——每個元素依宣告順序逐一嘗試，首個成功配對的型別勝出。
+傳入多個型別可宣告多型陣列。每個元素會依你寫下的順序逐一比對目標，第一個配對成功的型別立即勝出——一旦配對成功就不再嘗試後面的目標。
+
+`Native::float` 的元素接受 `int` 並轉為 `float`，比照 PHP 對 `float` 型別宣告的處理。但若同一個 `#[ArrayOf]` 也宣告了 `Native::int`，則精確匹配優先於轉換（同樣比照 PHP 的聯型規則），`int` 元素維持 `int`。
+
+與聯型屬性不同，`#[ArrayOf]` 的目標順序**不會**被 PHP 正規化，attribute 引數保持你寫下的樣子。因此「保留純值」或「建構物件」由你決定：
+
+```php
+#[ArrayOf(Native::int, Money::class)]  public array $a;  // [1, 2] → int, int
+#[ArrayOf(Money::class, Native::int)]  public array $b;  // [1, 2] → Money, Money
+```
+
+換成 union 屬性寫法就辦不到這件事：`int|Money` 傳入 `1`，不論寫成 `int|Money` 或 `Money|int`，永遠得到 `Money`，沒有辦法保留 `int`（見注意事項）。`#[ArrayOf]` 是本套件裡唯一能保留純值、不建構成物件的地方。
 
 **純量型別陣列**可使用 `Native` enum case 取代類別名稱：
 
@@ -898,6 +909,21 @@ vendor/bin/ib-writer
 2. 此體系子物件所有屬性型別禁止設為：`null`、`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類，如：`DateTime`、`Closure`。
 3. Enum 屬性接受 case 名稱（`"HIGH"`）或 backed 值（`3`），解析後的屬性值始終為 Enum 實例。
 4. 支援 `mixed` 型別，但值不會被進行驗證。
+5. `float` 屬性接受 `int` 輸入並自動轉為 `float`，與 PHP 在 `declare(strict_types=1)` 下的行為一致（int 轉 float 是嚴格模式唯一允許的隱式轉換）。純量成員組成的聯型遵循 PHP 的優先序——精確匹配優先於轉換，因此 `int|float` 會將 `1` 保留為 `int`，`float|string` 則轉為 `float`。`#[ArrayOf(Native::float)]` 的元素亦同。
+6. **聯型屬性收到純值時，會優先嘗試建構類別／Enum／SVO，而非保留純值。** `int|Money` 傳入 `1` 得到的是 `Money` 而非 `int`，且寫成 `Money|int` 結果相同——宣告順序不影響（PHP 會正規化聯型成員，類別一律排在純量之前）。
+
+   這是本套件的設計選擇，不是繼承自 PHP：原生 PHP 不會把純值拿去實例化，`int|Money` 給 `1` 就是 `int`、給 `Money` 實例才是 `Money`，決定權在呼叫端。是否由純值建構物件，是 hydration 才有的問題，因此由本套件決定——而宣告一個類別本身就代表比純量更明確的設計意圖，故以意圖強者為先。
+
+   這也是第 5 條「精確匹配優先」只適用於純量成員的原因：一旦聯型中有類別能吸收該值，類別必勝。需要保留純值原形時，請直接宣告單一型別，或改用 `#[ArrayOf]`（其目標順序由你掌控，不受正規化影響）。
+
+   **但類別之間的順序仍由你決定。** PHP 只把純量降到最後，類別／Enum／SVO 彼此維持宣告順序，因此有多個類別成員時，先宣告者先嘗試：
+
+   ```php
+   public int|Number|Money $a;  // 傳入 1 → Number（Enum 先宣告）
+   public int|Money|Number $b;  // 傳入 1 → Money（SVO 先宣告）
+   ```
+
+   `int` 寫在哪裡都不影響結果——它一律被降到最後。當多個類別都能接受同一個輸入時，請依你的優先意圖排列它們。
 
 ---
 

@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## [v4.6.0] - 2026-08-19
+
+### Changed
+
+- **`float` properties now accept `int` input, matching native PHP.** Under `declare(strict_types=1)` PHP still widens an `int` to `float` — it is the one coercion strict mode permits, and it applies to parameters, return types and typed properties alike. The engine's `float` resolver checked `is_float()` only, so `Example::fromArray(['price' => 1])` threw `InvalidValueException: expected float, got int` — while assigning that same `1` to a native `public float $price` succeeds without complaint.
+
+  The resolver now accepts `int` as well. No explicit cast is involved: the resolver closure declares `: float`, and the return type performs the widening.
+
+  Union members follow PHP's precedence rule — an exact match always wins over widening. `int|float` keeps an `int` input as `int`; `float|string` widens it to `float`. The widening check runs only after every member has failed, so a successful match costs nothing.
+
+- **`#[ArrayOf(Native::float)]` now accepts `int` elements.** The same divergence in the array-element path: elements were matched by exact `get_debug_type()` name, so `'int' !== 'float'` threw `InvalidArrayOfItemException`. This left the package internally inconsistent — an `int` was accepted by a nested DTO's `public float $v` but rejected by `Native::float` in the same position.
+
+  Element widening is now applied, and suppressed when the same `#[ArrayOf]` also declares `Native::int`, so an exact match still wins. Unlike the property path, array elements carry no type declaration of their own, so this conversion is an explicit cast.
+
+### Upgrade notes
+
+Both changes only widen what is accepted — every input that already constructed successfully still does, unchanged. No API signature, property type or attribute behaviour was altered. This is a minor release rather than a patch because the rejection was deliberate rather than accidental: releases up to v4.5.1 carried explicit tests asserting it (`testIntGivenToFloatProperty` in the Attacks suite, plus the `ArrayOfDTO` / `ArrayOfVO` float cases), so code may have been written against it.
+
+Two consequences worth checking before upgrading:
+
+- **A `catch (InvalidValueException)` / `catch (InvalidArrayOfItemException)` branch guarding against integer input is now unreachable.** If a `float` declaration was being used to force callers to supply an explicit float, that enforcement is gone; declare the property as `float` and validate the input shape upstream, or keep the value in a dedicated VO with a `validate()` method.
+
+- **Widening an `int` past 2^53 loses precision silently.** `9007199254740993` is stored as `9007199254740992.0`, and `PHP_INT_MAX` as `9223372036854775808.0`. Code that fed large integers (snowflake IDs, amounts held as integer minor units) to a `float` property used to get an exception and now gets a silently rounded value. Native PHP stores exactly the same rounded values, so no range check is added here — adding one would reintroduce the very inconsistency this release removes. Declare the property as `int` when exactness matters.
+
 ## [v4.5.1] - 2026-05-29
 
 ### Fixed

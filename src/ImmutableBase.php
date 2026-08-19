@@ -553,11 +553,12 @@ abstract readonly class ImmutableBase
         if (\count($args) === 1) {
             return self::arrayOfInitializeSingle($args[0], $value);
         }
+        $widenFloat = !\in_array('int', $args, true);
         foreach ($value as $k => $v) {
             $matched = false;
             foreach ($args as $arg) {
                 try {
-                    $values[] = self::resolveArrayOfItem($arg, $v, $k);
+                    $values[] = self::resolveArrayOfItem($arg, $v, $k, $widenFloat);
                     $matched  = true;
                     break;
                 } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException | InvalidArrayOfItemException) {
@@ -588,10 +589,7 @@ abstract readonly class ImmutableBase
         $isSVO       = $classExists && is_a($arg, SingleValueObject::class, true);
         foreach ($value as $k => $v) {
             if (!$classExists) {
-                match (true) {
-                    get_debug_type($v) === $arg => $values[] = $v,
-                    default                     => throw new InvalidArrayOfItemException($k, $arg)
-                };
+                $values[] = self::resolveNativeArrayOfItem($arg, $v, $k);
                 continue;
             }
             $values[] = match (true) {
@@ -609,24 +607,47 @@ abstract readonly class ImmutableBase
     }
 
     /**
+     * Resolves one array element against a builtin (non-class) #[ArrayOf] target.
+     * Element types are matched by exact `get_debug_type()` name, with the same
+     * int-to-float widening PHP applies to a native `float` slot. Array elements
+     * carry no type declaration of their own, so unlike builtinTypeResolver()
+     * the widening needs an explicit cast here.
+     *
+     * Widening is suppressed when the declaring #[ArrayOf] also lists `int`, so
+     * an exact match always wins — mirroring union resolution in unionTypeDecide().
+     *
+     * @param non-empty-string $arg The builtin type name to match against.
+     * @param mixed $v The element value to resolve.
+     * @param int|string $k The element index, used in exception messages.
+     * @param bool $widenFloat Whether an int element may widen to a `float` target.
+     * @throws InvalidArrayOfItemException
+     * @return mixed
+     */
+    private static function resolveNativeArrayOfItem(string $arg, mixed $v, int | string $k, bool $widenFloat = true): mixed
+    {
+        return match (true) {
+            get_debug_type($v) === $arg                    => $v,
+            $widenFloat && $arg === 'float' && \is_int($v) => (float) $v,
+            default                                        => throw new InvalidArrayOfItemException($k, $arg)
+        };
+    }
+    /**
      * Resolves a single array element against one candidate type.
      * Used by the multi-type path in arrayOfInitialize(); throws on mismatch
-     * so the caller can try the next type.
+     * so the caller can fall through to the next candidate.
      *
      * @param non-empty-string $arg The candidate type to attempt.
      * @param mixed $v The element value to resolve.
      * @param int|string $k The element index, used in exception messages.
+     * @param bool $widenFloat Whether an int element may widen to a `float` target.
      * @throws InvalidArrayOfItemException
      * @return mixed
      */
-    private static function resolveArrayOfItem(string $arg, mixed $v, int | string $k): mixed
+    private static function resolveArrayOfItem(string $arg, mixed $v, int | string $k, bool $widenFloat): mixed
     {
         $classExists = class_exists($arg);
         if (!$classExists) {
-            if (get_debug_type($v) === $arg) {
-                return $v;
-            }
-            throw new InvalidArrayOfItemException($k, $arg);
+            return self::resolveNativeArrayOfItem($arg, $v, $k, $widenFloat);
         }
         $isEnum = enum_exists($arg);
         $isSVO  = !$isEnum && is_a($arg, SingleValueObject::class, true);
@@ -709,7 +730,11 @@ abstract readonly class ImmutableBase
     }
     /**
      * Returns a strict type-checking closure for PHP builtin types.
-     * Each resolver enforces exact type matching (no coercion under strict_types=1).
+     * Each resolver enforces exact type matching (no coercion under strict_types=1),
+     * with the single exception PHP itself makes: an int widens to float, matching
+     * the behaviour of a native `float` parameter or property under strict_types=1.
+     * The widening needs no explicit cast — the closure's `: float` return type
+     * performs it, since int-to-float is permitted even in strict mode.
      * The `null` type is rejected at definition time as it represents a
      * contradictory declaration — a property that can only ever be null.
      * The `mixed` type (default branch) passes all values through without validation.
@@ -726,14 +751,44 @@ abstract readonly class ImmutableBase
             'int'    => static fn($v): int    => \is_int($v) ? $v : throw new InvalidValueException('int', $v),
             'bool'   => static fn($v): bool   => \is_bool($v) ? $v : throw new InvalidValueException('bool', $v),
             'array'  => static fn($v): array => \is_array($v) ? $v : throw new InvalidValueException('array', $v),
-            'float'  => static fn($v): float  => \is_float($v) ? $v : throw new InvalidValueException('float', $v),
+            'float'  => static fn($v): float  => \is_float($v) || \is_int($v) ? $v : throw new InvalidValueException('float', $v),
             default  => static fn($v): mixed  => $v,
         };
     }
     /**
-     * Resolves a value against a union type by attempting each member type
-     * in declaration order. The first successful match wins. If all members
-     * fail, throws InvalidValueException with the full union type signature.
+     * Resolves a value against a union type by attempting each member type in
+     * the order PHP reports them. The first successful match wins.
+     *
+     * That order is *not* the order the property declared. PHP normalizes union
+     * members before Reflection ever sees them: classes and enums come first and
+     * keep their relative declaration order, then builtins in the fixed sequence
+     * string, int, float, bool. So `string|Foo` is attempted as `Foo, string`,
+     * and `float|int|string` as `string, int, float`. Only the relative order of
+     * two class members is under the declaring code's control.
+     * (#[ArrayOf] targets are attribute arguments, are not normalized, and are
+     * attempted in true declaration order — see arrayOfInitialize().)
+     *
+     * If no member matches exactly, an int value widens to a `float` member when
+     * the union declares one — mirroring PHP, where an exact union match always
+     * takes precedence over int-to-float widening (so `int|float` keeps an int as
+     * int, while `float|string` widens it). That precedence needs no guard here:
+     * PHP normalizes union member order and always places `int` before `float`,
+     * so an int value has already matched and returned by the time this runs.
+     * (#[ArrayOf] targets are attribute arguments, are not normalized, and do
+     * need the explicit guard — see resolveNativeArrayOfItem().) The widening
+     * check runs only on the cold path, after every member has already failed,
+     * so it costs nothing on a successful match. `float` is a reserved word and can never be a class
+     * name, so a bare name lookup needs no `isBuiltin` guard.
+     *
+     * That branch deliberately returns the int unchanged rather than casting it:
+     * every caller hands the result to the hydrator, which assigns it to the
+     * declared typed property, and PHP performs the int-to-float conversion at
+     * that assignment. Contrast resolveNativeArrayOfItem(), where the value ends
+     * up in a plain array element with no type declaration to convert it, so the
+     * cast there is required.
+     *
+     * If all members still fail, throws InvalidValueException with the full
+     * union type signature.
      *
      * Catches InvalidValueException, ValidationChainException, and
      * InvalidEnumValueException to allow fallthrough to the next member.
@@ -751,6 +806,9 @@ abstract readonly class ImmutableBase
             } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException) {
                 continue;
             }
+        }
+        if (\is_int($value) && \in_array('float', $unionType['typename']['array'], true)) {
+            return $value;
         }
         throw new InvalidValueException($unionType['typename']['string'], $value);
     }

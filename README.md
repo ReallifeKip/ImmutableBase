@@ -585,7 +585,18 @@ CreateUserDTO::fromArray(['name' => 'Kip']); // role = 'member'
 
 Marks an array property as a typed collection of ImmutableBase instances or primitive scalar values. Each element is automatically validated or instantiated. The target must be a subclass of DTO, VO, or SVO, or a `Native` enum case for scalar arrays.
 
-Pass multiple types for polymorphic arrays — each element is resolved in declaration order, first match wins.
+Pass multiple types for polymorphic arrays. Each element is checked against the targets in the order you wrote them, and the first target it matches wins — no further targets are tried once one matches.
+
+A `Native::float` target accepts an `int` element and widens it to `float`, the same way PHP treats a native `float` type declaration. When the same `#[ArrayOf]` also declares `Native::int`, an exact match takes precedence over widening — mirroring PHP's union rules — and the `int` element stays an `int`.
+
+Unlike a union property, `#[ArrayOf]` targets are **not** normalized by PHP — attribute arguments stay exactly as written. So keeping a scalar versus constructing an object is your decision:
+
+```php
+#[ArrayOf(Native::int, Money::class)]  public array $a;  // [1, 2] → int, int
+#[ArrayOf(Money::class, Native::int)]  public array $b;  // [1, 2] → Money, Money
+```
+
+A union property can't do this: `int|Money` given `1` always builds a `Money`, whether you write it `int|Money` or `Money|int` — there is no way to keep the `1` as an `int` (see Notes). `#[ArrayOf]` is the only place in the package where a scalar can be kept as-is instead of being built into an object.
 
 **Primitive scalar arrays** can be declared using `Native` enum cases instead of a class name:
 
@@ -898,6 +909,21 @@ This section is provided for v3 migration reference only.
 2. Forbidden property types: `null`, `iterable`, `object`, non-ImmutableBase/non-Enum classes such as `DateTime`, `Closure`.
 3. Enum properties accept case names (`"HIGH"`) or backed values (`3`). The resolved property value is always an Enum instance.
 4. `mixed` type is supported, but values will not be validated.
+5. `float` properties accept `int` input and widen it to `float`, matching PHP under `declare(strict_types=1)` — int-to-float is the one implicit conversion strict mode permits. A union of scalar members follows PHP's precedence rule: an exact match wins over widening, so `int|float` keeps `1` as `int` while `float|string` widens it. The same applies to `#[ArrayOf(Native::float)]` elements.
+6. **Given a scalar, a union property tries to construct a class / Enum / SVO member before keeping the scalar.** `int|Money` given `1` yields a `Money`, not an `int` — and writing it as `Money|int` changes nothing, since PHP normalizes union members and always places classes before builtins.
+
+   This is a deliberate choice by this package, not inherited PHP behaviour. Native PHP never instantiates anything from a scalar: `int|Money` keeps `1` as `int`, and only an already-constructed `Money` becomes `Money` — the caller decides. Whether to build an object out of a scalar is a question only hydration raises, so this package answers it, and declaring a class is a more explicit statement of intent than declaring a scalar. The stronger intent wins.
+
+   This is also why the "exact match wins" rule in note 5 applies to scalar members only: once a union contains a class that can absorb the value, the class wins. To keep a scalar as-is, declare a single type, or use `#[ArrayOf]`, whose target order you control and which is never normalized.
+
+   **The order among class members is still yours, though.** PHP only demotes builtins to the back; classes, Enums and SVOs keep their relative declaration order, so with several class members the one declared first is attempted first:
+
+   ```php
+   public int|Number|Money $a;  // given 1 → Number (the Enum is declared first)
+   public int|Money|Number $b;  // given 1 → Money  (the SVO is declared first)
+   ```
+
+   Where `int` sits makes no difference — it is demoted regardless. When more than one class can accept the same input, order them by the priority you intend.
 
 ---
 
