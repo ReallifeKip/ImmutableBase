@@ -1,0 +1,136 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Installs the immutable-base Claude Code skill into the current project.
+ *
+ * Usage:
+ *   vendor/bin/ib-skill install   — copy skill to .claude/skills/immutable-base/
+ *   vendor/bin/ib-skill remove    — remove .claude/skills/immutable-base/
+ */
+
+$command = $argv[1] ?? 'help';
+
+$skillSrc  = realpath(__DIR__ . '/../.claude/skills/immutable-base') ?: __DIR__ . '/../.claude/skills/immutable-base';
+$projectDir = findProjectRoot();
+$skillDest = $projectDir . '/.claude/skills/immutable-base';
+
+if ($command !== 'help' && realpath($skillSrc) === realpath($skillDest)) {
+    fwrite(STDERR, "Error: run this script from a project that has immutable-base as a vendor dependency.\n");
+    fwrite(STDERR, "  vendor/bin/ib-skill install\n");
+    exit(1);
+}
+
+match ($command) {
+    'install' => install($skillSrc, $skillDest),
+    'remove'  => remove($skillDest),
+    default   => help(),
+};
+
+// ---------------------------------------------------------------------------
+
+function findProjectRoot(): string
+{
+    // Walk up from vendor/reallifekip/immutable-base/bin/ to the project root
+    $candidates = [
+        __DIR__ . '/../../../..',          // when run from vendor/
+        __DIR__ . '/../',                  // when run from the package root directly
+        getcwd(),
+    ];
+
+    foreach ($candidates as $path) {
+        $real = realpath($path);
+        if ($real && file_exists("$real/composer.json")) {
+            return $real;
+        }
+    }
+
+    return getcwd();
+}
+
+function install(string $src, string $dest): void
+{
+    if (!is_dir($src)) {
+        fwrite(STDERR, "Error: skill source not found at $src\n");
+        exit(1);
+    }
+
+    if (is_dir($dest)) {
+        out("Skill already installed at $dest");
+        out("Run 'vendor/bin/ib-skill remove' first to reinstall.");
+        exit(0);
+    }
+
+    ensureDir(dirname($dest));
+    copyDir($src, $dest);
+
+    out("✓ immutable-base skill installed to .claude/skills/immutable-base/");
+    out("  Claude Code will now use it automatically when working with");
+    out("  DataTransferObject, ValueObject, or SingleValueObject.");
+}
+
+function remove(string $dest): void
+{
+    if (!is_dir($dest)) {
+        out("Skill not installed at $dest — nothing to remove.");
+        exit(0);
+    }
+
+    removeDir($dest);
+    out("✓ immutable-base skill removed from .claude/skills/immutable-base/");
+}
+
+function help(): void
+{
+    out("immutable-base Claude Code skill installer");
+    out("");
+    out("Usage:");
+    out("  vendor/bin/ib-skill install   Install skill into .claude/skills/immutable-base/");
+    out("  vendor/bin/ib-skill remove    Remove .claude/skills/immutable-base/");
+}
+
+function copyDir(string $src, string $dest): void
+{
+    ensureDir($dest);
+
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($src, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST,
+    );
+
+    foreach ($items as $item) {
+        $target = $dest . DIRECTORY_SEPARATOR . $items->getSubPathname();
+
+        if ($item->isDir()) {
+            ensureDir($target);
+        } else {
+            copy($item->getPathname(), $target);
+        }
+    }
+}
+
+function removeDir(string $dir): void
+{
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+
+    foreach ($items as $item) {
+        $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+    }
+
+    rmdir($dir);
+}
+
+function ensureDir(string $dir): void
+{
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+}
+
+function out(string $line): void
+{
+    echo $line . PHP_EOL;
+}

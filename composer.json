@@ -53,6 +53,7 @@
     },
     "bin": [
         "bin/ib-cacher",
-        "bin/ib-writer"
+        "bin/ib-writer",
+        "bin/ib-skill"
     ]
 }
