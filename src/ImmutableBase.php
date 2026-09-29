@@ -4,29 +4,27 @@ declare (strict_types = 1);
 
 namespace ReallifeKip\ImmutableBase;
 
-use BackedEnum;
-use JsonSerializable;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\DebugLogDirectoryInvalidException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
-use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSerializeTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
-use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidWithPathException;
 use ReallifeKip\ImmutableBase\Exceptions\ImmutableBaseException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidJsonException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
+use ReallifeKip\ImmutableBase\Internal\Comparator;
 use ReallifeKip\ImmutableBase\Internal\Json;
 use ReallifeKip\ImmutableBase\Internal\KeyCaser;
 use ReallifeKip\ImmutableBase\Internal\Metadata;
+use ReallifeKip\ImmutableBase\Internal\PathUpdater;
 use ReallifeKip\ImmutableBase\Internal\Resolver;
 use ReallifeKip\ImmutableBase\Internal\Scanner;
+use ReallifeKip\ImmutableBase\Internal\Serializer;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
 use ReallifeKip\ImmutableBase\Types;
-use UnitEnum;
 
 /**
  * Core engine for immutable data objects with strict type validation.
@@ -195,170 +193,6 @@ abstract readonly class ImmutableBase
         }
     }
     /**
-     * Converts a value to its array-serializable form for toArray()/toJson().
-     * Dispatch order matters: SVO and BackedEnum both have ->value, but SVO
-     * must be checked first. UnitEnum serializes to ->name since it has no
-     * backed value. An ImmutableBase instance delegates to its own toArray().
-     *
-     * Scan-time validation keeps foreign objects out of typed properties, but
-     * `mixed` and plain `array` properties can still hold one: a
-     * JsonSerializable is serialized through jsonSerialize(), anything else
-     * throws InvalidSerializeTargetException.
-     *
-     * @param mixed $value The property value to convert: scalar passthrough, SVO→value, enum→value/name, IB→toArray().
-     * @throws InvalidSerializeTargetException
-     * @return mixed The array-serializable representation.
-     */
-    private static function toArrayOrValue(mixed $value, KeyCase | bool $keyCase = false)
-    {
-        return match (true) {
-            !\is_object($value)                 => $value,
-            $value instanceof SingleValueObject => $value->value,
-            $value instanceof BackedEnum        => $value->value,
-            $value instanceof UnitEnum          => $value->name,
-            $value instanceof self              => $value->toArray($keyCase),
-            $value instanceof JsonSerializable  => $value->jsonSerialize(),
-            default                             => throw new InvalidSerializeTargetException(get_debug_type($value)),
-        };
-    }
-    /**
-     * Recursively compares two arrays for deep equality: same keys (including
-     * keys holding null) and pairwise-equal values per valueEquals().
-     *
-     * @param array $a Left-hand array to compare.
-     * @param array $b Right-hand array to compare.
-     * @return bool
-     */
-    private static function arrayEquals(array $a, array $b): bool
-    {
-        if (\count($a) !== \count($b)) {
-            return false;
-        }
-        foreach ($a as $k => $v) {
-            if (!\array_key_exists($k, $b) || !self::valueEquals($v, $b[$k])) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Compares two property or element values for deep equality:
-     *   - Array → both arrays and recursively equal (a shape mismatch is inequality)
-     *   - ImmutableBase object → same class and equals()
-     *   - Enum → identity (cases are singletons)
-     *   - Scalar / null → strict identity (===)
-     *
-     * Non-ImmutableBase objects (only reachable through `mixed` or plain
-     * `array` properties) throw InvalidCompareTargetException, since
-     * ImmutableBase cannot guarantee semantic equality for foreign objects.
-     *
-     * @throws InvalidCompareTargetException
-     */
-    private static function valueEquals(mixed $a, mixed $b): bool
-    {
-        return match (true) {
-            \is_array($a)          => \is_array($b) && self::arrayEquals($a, $b),
-            $a instanceof self     => $b instanceof self && $a::class === $b::class && $a->equals($b),
-            $a instanceof UnitEnum => $a === $b,
-            \is_object($a)         => throw new InvalidCompareTargetException(get_debug_type($a)),
-            default                => $a === $b,
-        };
-    }
-
-    /**
-     * Parses a dot/bracket-notation path into root key and remainder.
-     * Validates that the root key points to a traversable target (array or
-     * ImmutableBase instance). Throws InvalidWithPathException if the root resolves
-     * to a scalar — indicating a structural path error by the caller.
-     *
-     * Note: Uses str_ireplace because str_replace cannot achieve 100%
-     * branch coverage under Xdebug's opcode-level tracking.
-     *
-     * @param string $path The raw dot/bracket-notation path (e.g. "items[0].sku").
-     * @param string $separator The path delimiter character (e.g. ".", "/").
-     * @param array $values Current property values of the object, used to validate the root key.
-     * @return array{string, string} Tuple of [root property name, remaining sub-path].
-     */
-    private static function parseDeepPath(string $path, string $separator, array $values): array
-    {
-        [$root, $rest] = explode(
-            $separator,
-            /** Note: Using str_ireplace because str_replace cannot reach 100% branch coverage. */
-            str_ireplace(['[', ']'], [$separator, ''], $path),
-            2
-        );
-        if (!(\is_array($values[$root] ?? null) || ($values[$root] ?? null) instanceof self)) {
-            throw new InvalidWithPathException($root);
-        }
-
-        return [$root, $rest];
-    }
-
-    /**
-     * Resolves accumulated deep-path updates (dot/bracket notation) into $values.
-     * For each root key, delegates to with() for ImmutableBase instances or
-     * applyArrayDeepUpdate() for plain arrays, then re-resolves ArrayOf properties.
-     *
-     * @param array<string, mixed>                       $values      Current property values, mutated in place.
-     * @param array<string, array<string, mixed>>        $deepUpdates Root → sub-path map collected during the flat loop.
-     * @param array<string, Type>                        $types       Compiled type metadata for the class.
-     * @param string                                     $separator   The path delimiter used to split keys.
-     * @param string|null                                $errorPath   Reference updated to the current root for error context.
-     */
-    private static function resolveDeepUpdates(array &$values, array $deepUpdates, array $types, string $separator,  ? string &$errorPath) : void
-    {
-        foreach ($deepUpdates as $root => $sub) {
-            $errorPath     = $root;
-            $current       = $values[$root];
-            $values[$root] = match (true) {
-                $current instanceof self => $current->with($sub, $separator),
-                default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
-            };
-            if ($types[$root]['arrayOf'] !== null) {
-                $values[$root] = Resolver::value($types[$root], $values[$root]);
-            }
-        }
-    }
-
-    /**
-     * Applies deep updates to a plain array (non-ImmutableBase) value. Groups sub-paths
-     * by their next segment: paths containing the separator are accumulated
-     * for recursive with() on nested ImmutableBase instances; flat keys are assigned directly.
-     *
-     * @param array $current The existing array value to update.
-     * @param array<string|int, mixed> $subPaths Remaining path segments mapped to their target values.
-     * @param string $separator The path delimiter for further nested resolution.
-     * @return array The updated array with deep modifications applied.
-     */
-    private static function applyArrayDeepUpdate(array $current, array $subPaths, string $separator): array
-    {
-        foreach ($subPaths as $path => $value) {
-            if (\is_string($path)) {
-                $target = explode($separator, $path, 2);
-                if (\count($target) === 2) {
-                    $grouped[$target[0]][$target[1]] = $value;
-                } else {
-                    $grouped[$target[0]] = $value;
-                }
-            } else {
-                $current[$path] = $value;
-            }
-        }
-        foreach ($grouped ?? [] as $index => $deeperValues) {
-            if (isset($current[$index])) {
-                $current[$index] = match (true) {
-                    $current[$index] instanceof self => $current[$index]->with($deeperValues, $separator),
-                    \is_array($current[$index])      => self::applyArrayDeepUpdate($current[$index], $deeperValues, $separator),
-                    default                          => $current[$index], // scalar, can't traverse
-                };
-            }
-        }
-
-        return $current;
-    }
-    /**
      * Loads pre-generated property metadata from a cache file, bypassing
      * reflection-based scanning. The cache must return an associative array
      * keyed by fully-qualified class name. Uses require_once to prevent
@@ -427,8 +261,8 @@ abstract readonly class ImmutableBase
     /**
      * Serializes the object to an associative array. Respects #[SkipOnNull]
      * (omits null-valued properties) and #[KeepOnNull] (overrides SkipOnNull
-     * to retain null). ArrayOf properties are recursively serialized via
-     * toArrayOrValue(). toJson() delegates entirely to this method to
+     * to retain null). Nested objects serialize recursively; see
+     * Internal\Serializer. toJson() delegates entirely to this method to
      * guarantee serialization consistency.
      *
      * @param KeyCase|bool $keyCase
@@ -441,23 +275,7 @@ abstract readonly class ImmutableBase
      */
     final public function toArray(KeyCase | bool $keyCase = false): array
     {
-        $types = Metadata::get(static::class)['types'];
-        foreach (get_object_vars($this) as $name => $value) {
-            $type = $types[$name];
-            if ($type['skipOnNull'] && $value === null && !$type['keepOnNull']) {
-                continue;
-            }
-            $outputName = match (true) {
-                $keyCase instanceof KeyCase => KeyCaser::convert($name, $keyCase),
-                $keyCase                    => $type['outputKey'],
-                default                     => $name,
-            };
-            $result[$outputName] = \is_array($value)
-            ? array_map(fn($v) => self::toArrayOrValue($v, $keyCase), $value)
-            : self::toArrayOrValue($value, $keyCase);
-        }
-
-        return $result ?? [];
+        return Serializer::toArray($this, $keyCase);
     }
 
     /**
@@ -482,7 +300,7 @@ abstract readonly class ImmutableBase
      * Performs a deep structural equality check between two ImmutableBase instances.
      * Requires exact class match (no polymorphic comparison). For SVOs,
      * compares the wrapped value directly. For compound objects, recursively
-     * compares each property with valueEquals():
+     * compares each property (see Internal\Comparator):
      *   - Array → recursive, shape-sensitive comparison
      *   - ImmutableBase object → same class and recursive equals()
      *   - Enum → identity (covers both UnitEnum and BackedEnum)
@@ -495,14 +313,7 @@ abstract readonly class ImmutableBase
      */
     final public function equals(self $value): bool
     {
-        if ($value::class !== static::class) {
-            throw new InvalidCompareTargetException(static::class, $value::class);
-        }
-        if ($this instanceof SingleValueObject) {
-            /** @var SingleValueObject $value */
-            return $this->value === $value->value;
-        }
-        return self::arrayEquals(get_object_vars($this), get_object_vars($value));
+        return Comparator::equals($this, $value);
     }
 
     /**
@@ -548,7 +359,7 @@ abstract readonly class ImmutableBase
             foreach ($normalizedData as $path => $value) {
                 $errorPath = $path;
                 if ($separator !== '' && strpbrk($path, "$separator\[")) {
-                    [$root, $rest]             = self::parseDeepPath($path, $separator, $values);
+                    [$root, $rest]             = PathUpdater::split($path, $separator, $values);
                     $deepUpdates[$root][$rest] = $value;
                     $errorPath                 = $root;
                 } elseif (\array_key_exists($path, $values) && isset($types[$path])) {
@@ -562,7 +373,7 @@ abstract readonly class ImmutableBase
                 throw new StrictViolationException($props['name'], $undeclared);
             }
             if (isset($deepUpdates)) {
-                self::resolveDeepUpdates($values, $deepUpdates, $types, $separator, $errorPath);
+                PathUpdater::apply($values, $deepUpdates, $types, $separator, $errorPath);
             }
             $instance = Metadata::reflection($static)->newInstanceWithoutConstructor();
             $props['hydrator']($instance, $values);
