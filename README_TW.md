@@ -385,6 +385,8 @@ $newSignUp = $signUp->with(['users[0].name' => 'Kip']);
 $newSignUp = $signUp->with(['users/0/name' => 'Kip'], '/');
 ```
 
+每個值的解析方式與 `fromArray()` 完全相同。不對應任何屬性的 key 會被忽略，除非啟用了[嚴格模式](#strict---嚴格模式)。
+
 **SVO with()** - 直接替換封裝的值：
 
 ```php
@@ -630,7 +632,7 @@ readonly class SignUpUsersDTO extends DataTransferObject
 
 ### `#[Strict]` - 嚴格模式
 
-拒絕不存在於已宣告屬性的 key 資料輸入。
+拒絕不存在於已宣告屬性的 key 資料輸入，建構時與 `with()` 皆適用。
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\Strict;

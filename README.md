@@ -385,6 +385,8 @@ $newSignUp = $signUp->with(['users[0].name' => 'Kip']);
 $newSignUp = $signUp->with(['users/0/name' => 'Kip'], '/');
 ```
 
+Each value is resolved exactly as `fromArray()` resolves it. Keys that name no property are ignored, unless [strict mode](#strict---strict-mode) is enabled.
+
 **SVO with()** - replaces the wrapped value directly:
 
 ```php
@@ -630,7 +632,7 @@ readonly class SignUpUsersDTO extends DataTransferObject
 
 ### `#[Strict]` - Strict Mode
 
-Rejects input keys that do not correspond to declared properties.
+Rejects input keys that do not correspond to declared properties, both at construction and in `with()`.
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\Strict;
