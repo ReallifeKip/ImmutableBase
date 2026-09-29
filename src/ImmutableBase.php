@@ -1289,7 +1289,8 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Respect each layer's #[InputKeysTo] definition.
+     *     - true: Use each property's #[OutputKeyTo] case (falling back to the
+     *       class-level #[OutputKeyTo]); nested objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return array
      */
@@ -1322,7 +1323,8 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Respect each layer's #[InputKeysTo] definition.
+     *     - true: Use each property's #[OutputKeyTo] case (falling back to the
+     *       class-level #[OutputKeyTo]); nested objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return string
      */
@@ -1426,6 +1428,20 @@ abstract readonly class ImmutableBase
         });
     }
     /**
+     * Preprocessing step for input normalization before property resolution.
+     * Called after defaults are merged and key remapping (#[InputKeyTo]) is applied,
+     * before type resolution and hydration. Declare in subclasses to normalize values,
+     * derive fields, or inject context. Only keys already present in $data are written back.
+     *
+     * @param array<string, mixed> $data Merged input data (includes defaults)
+     * @return array<string, mixed>
+     */
+    protected static function prepareInput(array $data): array
+    {
+        return []; // @codeCoverageIgnore
+    }
+
+    /**
      * Declares default values for properties that should be populated
      * when absent from input data. Return an associative array keyed
      * by property name — only keys matching declared property names
@@ -1448,20 +1464,6 @@ abstract readonly class ImmutableBase
      *
      * @return array<property-string, mixed>
      */
-    /**
-     * Preprocessing step for input normalization before property resolution.
-     * Called after defaults are merged and key remapping (#[InputKeyTo]) is applied,
-     * before type resolution and hydration. Declare in subclasses to normalize values,
-     * derive fields, or inject context. Only keys already present in $data are written back.
-     *
-     * @param array<string, mixed> $data Merged input data (includes defaults)
-     * @return array<string, mixed>
-     */
-    protected static function prepareInput(array $data): array
-    {
-        return []; // @codeCoverageIgnore
-    }
-
     public static function defaultValues(): array
     {
         return [];
