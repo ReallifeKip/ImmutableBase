@@ -7,6 +7,7 @@ namespace ReallifeKip\ImmutableBase;
 use BackedEnum;
 use Closure;
 use Composer\Autoload\ClassLoader;
+use JsonSerializable;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
 use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
@@ -25,6 +26,7 @@ use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsag
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSerializeTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidWithPathException;
@@ -946,10 +948,15 @@ abstract readonly class ImmutableBase
      * Converts a value to its array-serializable form for toArray()/toJson().
      * Dispatch order matters: SVO and BackedEnum both have ->value, but SVO
      * must be checked first. UnitEnum serializes to ->name since it has no
-     * backed value. Any remaining object (guaranteed to be an ImmutableBase instance by
-     * scan-time validation) delegates to its own toArray().
+     * backed value. An ImmutableBase instance delegates to its own toArray().
+     *
+     * Scan-time validation keeps foreign objects out of typed properties, but
+     * `mixed` and plain `array` properties can still hold one: a
+     * JsonSerializable is serialized through jsonSerialize(), anything else
+     * throws InvalidSerializeTargetException.
      *
      * @param mixed $value The property value to convert: scalar passthrough, SVO→value, enum→value/name, IB→toArray().
+     * @throws InvalidSerializeTargetException
      * @return mixed The array-serializable representation.
      */
     private static function toArrayOrValue(mixed $value, KeyCase | bool $keyCase = false)
@@ -959,7 +966,9 @@ abstract readonly class ImmutableBase
             $value instanceof SingleValueObject => $value->value,
             $value instanceof BackedEnum        => $value->value,
             $value instanceof UnitEnum          => $value->name,
-            default                             => $value->toArray($keyCase)
+            $value instanceof self              => $value->toArray($keyCase),
+            $value instanceof JsonSerializable  => $value->jsonSerialize(),
+            default                             => throw new InvalidSerializeTargetException(get_debug_type($value)),
         };
     }
     /**
