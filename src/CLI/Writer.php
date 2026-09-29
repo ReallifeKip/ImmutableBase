@@ -11,6 +11,7 @@ use ReallifeKip\ImmutableBase\CLI\writer\Mermaid;
 use ReallifeKip\ImmutableBase\CLI\writer\Typescript;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
@@ -106,7 +107,7 @@ class Writer
      */
     private static function buildClassMap(): array
     {
-        foreach (ImmutableBase::state()['properties'] as $value) {
+        foreach (Metadata::all() as $value) {
             $fullClass = $value['name'];
             $ref       = new ReflectionClass($fullClass);
             if ($ref->isAbstract()) {

@@ -4,11 +4,11 @@ declare (strict_types = 1);
 
 namespace ReallifeKip\ImmutableBase\CLI;
 
-use Composer\Autoload\ClassLoader;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
 use ReallifeKip\ImmutableBase\BasicTrait;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
@@ -31,6 +31,8 @@ class Cacher
     use BasicTrait;
     public static bool $silent      = false;
     protected array $classToFileMap = [];
+    /** @var array<class-string, array<string, mixed>> Cacheable default per class and property. */
+    private array $defaults = [];
     /** @var array<int, class-string> */
     private static array $baseClasses = [
         ImmutableBase::class,
@@ -50,16 +52,18 @@ class Cacher
      */
     public function scan(string $dir): void
     {
-        $s              = &ImmutableBase::state();
-        $outputPath     = $s['cachePath'] ??= dirname(dirname((new ReflectionClass(ClassLoader::class))->getFileName()), 2) . '/ib-cache.php'; // @codeCoverageIgnore
+        $outputPath     = Metadata::cachePath();
         $exclude        = array_flip(['ref', 'validateMethod', 'hydrator']);
         $excludeType    = array_flip(['ref', 'typeRef', 'resolver', 'propertyRef']);
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];
         $this->indexDirectory($dir);
-        foreach ($s['properties'] as $classname => $props) {
+        foreach (Metadata::all() as $classname => $props) {
             $entry = array_diff_key($props, $exclude);
             foreach ($entry['types'] as $name => $type) {
+                if (isset($this->defaults[$classname]) && \array_key_exists($name, $this->defaults[$classname])) {
+                    $type['defaults'] = $this->defaults[$classname][$name];
+                }
                 $clean = array_diff_key($type, $excludeType);
                 if (!empty($clean['types'])) {
                     foreach ($clean['types'] as $i => $subType) {
@@ -118,7 +122,7 @@ class Cacher
                     /** @var ImmutableBase $obj */
                     $obj = $ref->newInstanceWithoutConstructor(); // NOSONAR
                     $method->invoke(null, $obj);
-                    self::defaultValueValidate($class, $obj::defaultValues(), $ref->getProperties());
+                    $this->defaults[$class] = self::cacheableDefaults($class, $obj::defaultValues(), $ref->getProperties());
                 } catch (Throwable $e) {
                     match (true) {
                         !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
@@ -181,15 +185,15 @@ class Cacher
      * or a DateTime instance) is detected as a default value, it is flagged
      * as non-cacheable to prevent serialization errors.
      *
-     * Non-cacheable defaults will trigger a terminal warning and return null,
-     * forcing the engine to resolve these values at runtime.
+     * Non-cacheable defaults will trigger a terminal warning and are cached as
+     * null, forcing the engine to resolve these values at runtime.
      *
      * @param class-string $classname The fully-qualified name of the class being scanned.
      * @param array<property-string, mixed> $defaults
      * @param ReflectionProperty[] $properties The name of the property being validated.
-     * @return void
+     * @return array<string, mixed> The default to cache for each property.
      */
-    private static function defaultValueValidate(string $classname, array $defaults, array $properties): void
+    private static function cacheableDefaults(string $classname, array $defaults, array $properties): array
     {
         foreach ($properties as $property) {
             $name    = $property->name;
@@ -199,8 +203,10 @@ class Cacher
                 fwrite(STDERR, "\033[31m[Notice] $classname: '$property' not cacheable ($type). Will resolve at runtime only.\033[0m\n");
                 $default = null;
             }
-            ImmutableBase::state()['properties'][$classname]['types'][$name]['defaults'] = $default;
+            $cacheable[$name] = $default;
         }
+
+        return $cacheable ?? [];
     }
     /**
      * Recursively checks whether a value contains any non-serializable
