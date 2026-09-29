@@ -9,11 +9,6 @@ use ReallifeKip\ImmutableBase\BasicTrait;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Internal\Metadata;
-use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
-use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
-use ReallifeKip\ImmutableBase\Objects\ValueObject;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionProperty;
 use Throwable;
@@ -33,13 +28,6 @@ class Cacher
     protected array $classToFileMap = [];
     /** @var array<class-string, array<string, mixed>> Cacheable default per class and property. */
     private array $defaults = [];
-    /** @var array<int, class-string> */
-    private static array $baseClasses = [
-        ImmutableBase::class,
-        DataTransferObject::class,
-        ValueObject::class,
-        SingleValueObject::class,
-    ];
 
     /**
      * Scans the target directory, triggers property metadata compilation
@@ -78,105 +66,28 @@ class Cacher
     }
 
     /**
-     * Recursively walks the directory tree, discovers PHP files containing
-     * ImmutableBase subclasses, and force-instantiates each class to populate
-     * StaticStatus::$properties with compiled metadata.
-     *
-     * Instantiation errors are silently caught — classes with unsatisfiable
-     * required properties will still have their metadata partially compiled
-     * via buildPropertyInheritanceChain() before the exception occurs.
+     * Compiles every ImmutableBase class under $dir (see ClassDiscovery) and
+     * records each one's cacheable default values for the export. Classes
+     * with definition errors are skipped, with a notice unless silent.
      *
      * @param string $dir Root directory to scan.
      * @return void
      */
     private function indexDirectory(string $dir): void
     {
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
-        foreach ($iterator as $file) {
-            if (
-                match (true) {
-                    $file->isDir()                  => true,
-                    $file->getExtension() !== 'php' => true,
-                    default                         => str_contains($file->getRealPath(), DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR)
-                }
-            ) {
-                continue;
-            }
-            $content = file_get_contents($file->getRealPath());
-            $classes = $content ? self::parseFullClassname($content) : [];
-            foreach ($classes as $class) {
-                try {
-                    if (
-                        match (true) {
-                            empty(trim($class))                                => true,
-                            !class_exists($class)                              => true,
-                            ($ref = new ReflectionClass($class))->isAbstract() => true,
-                            $ref->isTrait()                                    => true,
-                            !is_subclass_of($class, self::$baseClasses[0])     => true,
-                            default                                            => false
-                        }
-                    ) {
-                        continue;
-                    }
-                    ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
-                    /** @var ImmutableBase $obj */
-                    $obj = $ref->newInstanceWithoutConstructor(); // NOSONAR
-                    $method->invoke(null, $obj);
-                    $this->defaults[$class] = self::cacheableDefaults($class, $obj::defaultValues(), $ref->getProperties());
-                } catch (Throwable $e) {
-                    match (true) {
-                        !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
-                        default => null
-                    };
+        ClassDiscovery::compileAll(
+            $dir,
+            function (string $class, ImmutableBase $prototype): void {
+                $this->defaults[$class] = self::cacheableDefaults($class, $prototype::defaultValues(), (new ReflectionClass($class))->getProperties());
+            },
+            static function (string $class, Throwable $e): void {
+                if (!self::$silent && $e instanceof DefinitionException) {
+                    fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
                 }
             }
-        }
+        );
     }
 
-    /**
-     * Extracts the fully-qualified class name from a PHP file by tokenizing
-     * its source. Resolves namespace and class name from T_NAMESPACE and
-     * T_CLASS tokens respectively.
-     *
-     * @param string $content Full PHP file content.
-     * @return list<class-string>
-     */
-    private static function parseFullClassname(string $content): array
-    {
-        $tokens           = token_get_all($content);
-        $namespace        = '';
-        $classes          = [];
-        $gettingNamespace = false;
-        $gettingClass     = false;
-        $prevTokenType    = null;
-        foreach ($tokens as $token) {
-            if (!\is_array($token)) {
-                if ($token === ';') {
-                    $gettingNamespace = false;
-                }
-                continue;
-            }
-            [$type, $value] = $token;
-            match (true) {
-                $type === T_NAMESPACE                                                              => $gettingNamespace = true,
-                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON && $prevTokenType !== T_NEW => $gettingClass     = true,
-                default                                                                            => null
-            };
-            if ($gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)) {
-                $namespace .= $value;
-            }
-            if ($gettingClass && $type === T_STRING) {
-                $classes[]    = ltrim("$namespace\\$value", '\\');
-                $gettingClass = false;
-            }
-            match (true) {
-                $type !== T_WHITESPACE => $prevTokenType = $type,
-                default                => null
-            };
-        }
-
-        return $classes;
-    }
     /**
      * Validates if a default value is serializable for caching.
      *

@@ -287,8 +287,7 @@ class WriterTest extends TestCase
             ->withContent('<?php class Foo {}')
             ->at($root);
 
-        $method = new \ReflectionMethod(Writer::class, 'parseFullClassNames');
-        $result = @$method->invoke(null, $file->url());
+        $result = @\ReallifeKip\ImmutableBase\CLI\ClassDiscovery::classNamesIn($file->url());
 
         $this->assertSame([], $result);
     }

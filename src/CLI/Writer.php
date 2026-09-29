@@ -16,10 +16,7 @@ use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
 use ReallifeKip\ImmutableBase\Types;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use ReflectionClass;
-use SplFileInfo;
 use Throwable;
 
 /**
@@ -271,126 +268,19 @@ class Writer
     }
 
     /**
-     * Recursively discovers and force-instantiates all eligible ImmutableBase
-     * subclasses in the working directory to populate StaticStatus
-     * with compiled property metadata. Excludes vendor/ directory.
+     * Compiles every ImmutableBase class in the working directory (see
+     * ClassDiscovery) so buildClassMap() can read their metadata. Classes
+     * with definition errors are skipped, with a notice unless silent.
+     *
      * @return void
      */
     private static function indexDirectory(): void
     {
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(self::$scanDir));
-        foreach ($iterator as $file) {
-            if (!self::isEligibleFile($file)) {
-                continue;
+        ClassDiscovery::compileAll(self::$scanDir, null, static function (string $class, Throwable $e): void {
+            if (!self::$silent && $e instanceof DefinitionException) {
+                fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n");
             }
-            foreach (self::parseFullClassNames($file->getRealPath()) as $class) {
-                if (self::isEligibleClass($class)) {
-                    self::tryInstantiateClass($class);
-                }
-            }
-        }
+        });
     }
 
-    /**
-     * Determines if a file should be considered for class discovery.
-     * Accepts only .php files outside the vendor/ directory.
-     *
-     * @param SplFileInfo $file
-     * @return bool
-     */
-    private static function isEligibleFile(SplFileInfo $file): bool
-    {
-        return match (true) {
-            $file->isDir()                  => false,
-            $file->getExtension() !== 'php' => false,
-            default                         => !str_contains($file->getRealPath(), DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR)
-        };
-    }
-
-    /**
-     * Determines if a discovered class name is a concrete, non-abstract
-     * ImmutableBase subclass eligible for documentation generation.
-     *
-     * @param class-string|null $class
-     * @return bool
-     */
-    private static function isEligibleClass(?string $class): bool
-    {
-        return match (true) {
-            $class === null || trim($class) === '' || !class_exists($class)       => false,
-            $class === self::class || (new ReflectionClass($class))->isAbstract() => false,
-            default                                                               => is_subclass_of($class, self::$baseClasses[0])
-        };
-    }
-
-    /**
-     * Force-instantiates a class to trigger property metadata compilation
-     * via buildPropertyInheritanceChain(). SVOs receive a type-appropriate
-     * dummy value; DTOs and VOs receive an empty array. Exceptions are
-     * silently caught — metadata compilation occurs before validation.
-     *
-     * @param class-string $class
-     * @return void
-     */
-    private static function tryInstantiateClass(string $class): void
-    {
-        try {
-            $ref = new ReflectionClass($class);
-            ($method = $ref->getMethod('buildPropertyInheritanceChain'))->setAccessible(true); // NOSONAR
-            $method->invoke(null, $ref->newInstanceWithoutConstructor()); // NOSONAR
-        } catch (Throwable $e) {
-            match (true) {
-                !self::$silent && $e instanceof DefinitionException => fwrite(STDERR, "\033[33m[Skipped] $class: {$e->getMessage()}\033[0m\n"),
-                default => null
-            };
-        }
-    }
-
-    /**
-     * Extracts the fully-qualified names of every class declared in a PHP
-     * source file by tokenizing its contents. Handles both simple and
-     * qualified namespace declarations. `Foo::class` and anonymous classes
-     * (`new class`) are not declarations and are skipped.
-     *
-     * @param string $path Absolute file path.
-     * @return list<class-string> FQCNs in declaration order; empty if none or unreadable.
-     */
-    private static function parseFullClassNames(string $path): array
-    {
-        $content = file_get_contents($path);
-        if ($content === false) {
-            return [];
-        }
-        $tokens           = token_get_all($content);
-        $namespace        = [];
-        $classes          = [];
-        $gettingNamespace = false;
-        $gettingClass     = false;
-        $prevTokenType    = null;
-        foreach ($tokens as $token) {
-            if (!\is_array($token)) {
-                if ($token === ';') {
-                    $gettingNamespace = false;
-                }
-                continue;
-            }
-            [$type, $value] = $token;
-            match (true) {
-                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON && $prevTokenType !== T_NEW => $gettingClass     = true,
-                $type === T_NAMESPACE                                                              => $gettingNamespace = true,
-                $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)            => $namespace[]      = $value,
-                default                                                                            => null
-            };
-            if ($gettingClass && $type === T_STRING) {
-                $classes[]    = ltrim(implode('', $namespace) . "\\$value", '\\');
-                $gettingClass = false;
-            }
-            match (true) {
-                $type !== T_WHITESPACE => $prevTokenType = $type,
-                default                => null
-            };
-        }
-
-        return $classes;
-    }
 }
