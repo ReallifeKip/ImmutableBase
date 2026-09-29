@@ -1374,6 +1374,10 @@ abstract readonly class ImmutableBase
      * targets must resolve to an ImmutableBase instance or array; scalar targets throw
      * InvalidWithPathException.
      *
+     * Keys that name no property are ignored, except under strict mode
+     * (global or #[Strict], unless #[Lax]), where they throw
+     * StrictViolationException exactly as they do during construction.
+     *
      * @param string|array|object $data Update payload: associative array, object (cast to array), or JSON string.
      * @param string $separator Path delimiter for deep notation; empty string disables deep path parsing.
      * @return static
@@ -1405,7 +1409,13 @@ abstract readonly class ImmutableBase
                     $errorPath                 = $root;
                 } elseif (\array_key_exists($path, $values) && isset($types[$path])) {
                     $values[$path] = self::resolveValue($types[$path], $value, true);
+                } else {
+                    $undeclared[] = $path;
                 }
+            }
+            if (isset($undeclared) && !$props['isLax'] && ($s['strict'] || $props['isStrict'])) {
+                $errorPath = null; // a class-level violation, as in the constructor
+                throw new StrictViolationException($props['name'], $undeclared);
             }
             if (isset($deepUpdates)) {
                 self::resolveDeepUpdates($values, $deepUpdates, $types, $separator, $errorPath);
