@@ -954,39 +954,49 @@ abstract readonly class ImmutableBase
         };
     }
     /**
-     * Recursively compares two arrays for deep equality, handling nested
-     * ImmutableBase objects and sub-arrays. Non-ImmutableBase objects in plain `array` properties
-     * (which bypass ArrayOf validation) throw InvalidCompareTargetException
-     * since ImmutableBase cannot guarantee semantic equality for foreign objects.
+     * Recursively compares two arrays for deep equality: same keys (including
+     * keys holding null) and pairwise-equal values per valueEquals().
      *
-     * @param self $object The root ImmutableBase instance initiating the comparison (used for recursive dispatch).
      * @param array $a Left-hand array to compare.
      * @param array $b Right-hand array to compare.
      * @return bool
      */
-    private static function arrayEquals(self $object, array $a, array $b): bool
+    private static function arrayEquals(array $a, array $b): bool
     {
         if (\count($a) !== \count($b)) {
             return false;
         }
         foreach ($a as $k => $v) {
-            if (isset($b[$k])) {
-                $bv = $b[$k];
-                if (
-                    match (true) {
-                        \is_array($v)  => self::arrayEquals($object, $v, $bv),
-                        \is_object($v) => $v instanceof self ? $v->equals($bv) : throw new InvalidCompareTargetException(get_debug_type($v)),
-                        default        => $v === $bv,
-                    } === true
-                ) {
-                    continue;
-                }
+            if (!\array_key_exists($k, $b) || !self::valueEquals($v, $b[$k])) {
+                return false;
             }
-
-            return false;
         }
 
         return true;
+    }
+
+    /**
+     * Compares two property or element values for deep equality:
+     *   - Array → both arrays and recursively equal (a shape mismatch is inequality)
+     *   - ImmutableBase object → same class and equals()
+     *   - Enum → identity (cases are singletons)
+     *   - Scalar / null → strict identity (===)
+     *
+     * Non-ImmutableBase objects (only reachable through `mixed` or plain
+     * `array` properties) throw InvalidCompareTargetException, since
+     * ImmutableBase cannot guarantee semantic equality for foreign objects.
+     *
+     * @throws InvalidCompareTargetException
+     */
+    private static function valueEquals(mixed $a, mixed $b): bool
+    {
+        return match (true) {
+            \is_array($a)          => \is_array($b) && self::arrayEquals($a, $b),
+            $a instanceof self     => $b instanceof self && $a::class === $b::class && $a->equals($b),
+            $a instanceof UnitEnum => $a === $b,
+            \is_object($a)         => throw new InvalidCompareTargetException(get_debug_type($a)),
+            default                => $a === $b,
+        };
     }
 
     /**
@@ -1307,12 +1317,12 @@ abstract readonly class ImmutableBase
      * Performs a deep structural equality check between two ImmutableBase instances.
      * Requires exact class match (no polymorphic comparison). For SVOs,
      * compares the wrapped value directly. For compound objects, recursively
-     * compares each property:
-     *   - Type mismatch → false
-     *   - Array → recursive arrayEquals() for nested ImmutableBase objects
-     *   - ImmutableBase object → recursive equals()
-     *   - Enum → compare by name (covers both UnitEnum and BackedEnum)
-     *   - Scalar → strict identity (===)
+     * compares each property with valueEquals():
+     *   - Array → recursive, shape-sensitive comparison
+     *   - ImmutableBase object → same class and recursive equals()
+     *   - Enum → identity (covers both UnitEnum and BackedEnum)
+     *   - Scalar / null → strict identity (===)
+     *   - Foreign object (via `mixed` / plain `array`) → InvalidCompareTargetException
      *
      * @param static $value The instance to compare against; must be the exact same class.
      * @throws InvalidCompareTargetException If the target is not of the same class.
@@ -1327,23 +1337,7 @@ abstract readonly class ImmutableBase
             /** @var SingleValueObject $value */
             return $this->value === $value->value;
         }
-        $a = get_object_vars($this);
-        $b = get_object_vars($value);
-        foreach ($a as $name => $av) {
-            $bv = $b[$name] ?? null;
-            if (
-                !match (true) {
-                    get_debug_type($av) !== get_debug_type($bv) => false,
-                    \is_array($av)                              => self::arrayEquals($this, $av, $bv),
-                    !\is_object($av)                            => $av === $bv,
-                    default                                     => $av instanceof self ? $av->equals($bv) : $av->name === $bv->name,
-                }
-            ) {
-                return false;
-            }
-        }
-
-        return true;
+        return self::arrayEquals(get_object_vars($this), get_object_vars($value));
     }
 
     /**
