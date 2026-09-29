@@ -171,7 +171,8 @@ abstract readonly class ImmutableBase
      * been processed yet. Supports three metadata sources:
      *
      *   1. state()['properties'] — already compiled (skip via continue)
-     *   2. state()['cachedMeta'] — pre-generated cache (restore validate method)
+     *   2. state()['cachedMeta'] — pre-generated cache (restore validate method),
+     *      used only while it still matches the class (see cacheMatchesClass())
      *   3. Reflection — full scan via scanProperties()
      *
      * After metadata is resolved, each property type gets a compiled resolver
@@ -197,9 +198,9 @@ abstract readonly class ImmutableBase
             if (isset($s['properties'][$classname])) {
                 continue;
             }
-            if (isset($s['cachedMeta'][$classname])) {
+            if (isset($s['cachedMeta'][$classname]) && self::cacheMatchesClass($s['cachedMeta'][$classname], $ref)) {
                 $props                   = $s['cachedMeta'][$classname];
-                $refClass                = $s['refs'][$classname] ??= new ReflectionClass($classname);
+                $refClass                = $s['refs'][$classname] ??= $ref;
                 $props['validateMethod'] = !$props['hasValidate'] ?: $refClass->getMethod('validate');
             } else {
                 $props = self::scanProperties(
@@ -226,6 +227,37 @@ abstract readonly class ImmutableBase
         }
 
         return $s['properties'];
+    }
+
+    /**
+     * Whether a pre-generated cache entry still describes $ref: the same
+     * property names, each with the same declared type and nullability.
+     * A class edited after ib-cacher ran (a property added, removed, renamed
+     * or retyped) fails the check and is scanned by reflection instead, so a
+     * stale cache degrades to the uncached path rather than to wrong
+     * metadata. Changes to attributes or methods alone are not detected.
+     *
+     * @param Property $cached
+     */
+    private static function cacheMatchesClass(array $cached, ReflectionClass $ref): bool
+    {
+        $properties = $ref->getProperties();
+        if (\count($properties) !== \count($cached['types'])) {
+            return false;
+        }
+        foreach ($properties as $property) {
+            $type  = $property->getType();
+            $entry = $cached['types'][$property->name] ?? null;
+            if (
+                $type === null || $entry === null
+                || $entry['allowsNull'] !== $type->allowsNull()
+                || $entry['typename']['string'] !== ($type instanceof ReflectionNamedType ? $type->getName() : (string) $type)
+            ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
