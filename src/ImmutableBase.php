@@ -30,14 +30,12 @@ use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecExcepti
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidWithPathException;
 use ReallifeKip\ImmutableBase\Exceptions\ImmutableBaseException;
-use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidEnumValueException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidJsonException;
-use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
-use ReallifeKip\ImmutableBase\Exceptions\RuntimeException as InputRejectedException;
-use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
+use ReallifeKip\ImmutableBase\Internal\Json;
 use ReallifeKip\ImmutableBase\Internal\Metadata;
+use ReallifeKip\ImmutableBase\Internal\Resolver;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
@@ -156,7 +154,7 @@ abstract readonly class ImmutableBase
                 }
                 $data = array_merge($data, array_intersect_key($classname::prepareInput($data), $data));
             }
-            $class['hydrator']($this, self::resolvePropertyData($data, $class['types'], $errorPath));
+            $class['hydrator']($this, Resolver::properties($data, $class['types'], $errorPath));
         });
     }
     /**
@@ -169,8 +167,9 @@ abstract readonly class ImmutableBase
      *      used only while it still matches the class (see cacheMatchesClass())
      *   3. Reflection — full scan via scanProperties()
      *
-     * After metadata is resolved, each property type gets a compiled resolver
-     * closure via buildResolver() and a hydrator closure for readonly assignment.
+     * After metadata is resolved, each property type is compiled by
+     * Internal\Resolver::compile() and the class gets a hydrator closure for
+     * readonly assignment.
      *
      * @param self $object The instance being constructed; used to seed ReflectionClass and determine DTO/VO/SVO type.
      * @throws InvalidSpecException
@@ -200,16 +199,7 @@ abstract readonly class ImmutableBase
                     }
                 );
             }
-            foreach ($props['types'] as &$type) {
-                // with() decodes JSON only for a plain `array` target; see resolveValue()
-                $type['decodesJson'] = !$type['isUnion'] && $type['typename']['string'] === 'array' && $type['arrayOf'] === null;
-                // Coalesce defaults for cache-sourced metadata which omits runtime-only fields
-                $type['resolver'] = self::buildResolver(
-                    $type,
-                    !($type['isBuiltin'] ??= false) && is_a($type['typename']['string'] ?? '', $self, true),
-                    $type['isSVO'] ??= false
-                );
-            }
+            $props['types']    = array_map(Resolver::compile(...), $props['types']);
             $props['hydrator'] = self::createHydrator($classname, array_keys($props['types']));
             Metadata::put($classname, $props);
         }
@@ -249,58 +239,17 @@ abstract readonly class ImmutableBase
     }
 
     /**
-     * Iterates the compiled property type map, fills in missing keys with their
-     * default values (attribute-declared, method-declared, or null), then
-     * resolves each value against its declared type via resolveValue().
+     * Resolves one raw value against one property's compiled type metadata.
+     * See Internal\Resolver::value() for the resolution order.
      *
-     * @param array<string, mixed>  $data      Input array, mutated in place when a default is injected.
-     * @param array<string, Type>   $types     Compiled property type metadata from scanProperties().
-     * @param string|null           $errorPath Reference updated to the current property name for error context.
-     * @return array<string, mixed> Resolved property values keyed by property name.
-     */
-    private static function resolvePropertyData(array &$data, array $types, ?string &$errorPath): array
-    {
-        foreach ($types as $type) {
-            $name = $errorPath = $type['propertyName'];
-            if (!\array_key_exists($name, $data)) {
-                $data[$name] = $type['defaults'] ?? (isset($type['propertyRef']) ? self::getAttributeArgument($type['propertyRef'], Defaults::class) : null);
-            }
-            match (true) {
-                !isset($data[$name]) && !$type['allowsNull'] => throw new RequiredValueException($name),
-                default                                      => $resolved[$name] = self::resolveValue($type, $data[$name] ?? null, false)
-            };
-        }
-
-        return $resolved ?? [];
-    }
-
-    /**
-     * Central value resolution dispatcher. Handles four cases in priority order:
-     *   1. $tryJson=true, a plain `array` target and a string that decodes to
-     *      an array → resolve the decoded array instead (with() only)
-     *   2. Null → accept if nullable, otherwise throw RequiredValueException
-     *   3. ArrayOf property → delegate to arrayOfInitialize()
-     *   4. Everything else → invoke the pre-compiled resolver closure
-     *
-     * Every other target already handles JSON in its own resolver where it is
-     * meaningful (nested objects, #[ArrayOf]) and must keep a JSON-looking
-     * string as-is where a string is valid (`string`, `mixed`, SVOs), so
-     * with() resolves those exactly as fromArray() does.
-     *
-     * @param Type $type Compiled property type metadata from scanProperties().
+     * @param Type $type Compiled property type metadata.
      * @param mixed $value The raw input value to resolve against the declared type.
-     * @param bool $tryJson When true, decode a JSON string for a plain `array` target.
+     * @param bool $tryJson When true, decode a JSON string for a plain `array` target (with() only).
      * @return mixed
      */
     final protected static function resolveValue(array $type, mixed $value, bool $tryJson = false): mixed
     {
-        return match (true) {
-            $tryJson && ($type['decodesJson'] ?? false) && self::jsonLike($value) && \is_array($decoded = self::jsonParser($value))
-                                               => $decoded,
-            $value === null                    => $type['allowsNull'] ? null : throw new RequiredValueException($type['propertyName'] ?? $type['typename']['string']),
-            ($arg = $type['arrayOf']) !== null => self::arrayOfInitialize($arg, $value),
-            default                            => $type['resolver']($value)
-        };
+        return Resolver::value($type, $value, $tryJson);
     }
 
     /**
@@ -480,11 +429,11 @@ abstract readonly class ImmutableBase
      * Scans a single named type, enforcing the forbidden type rule:
      * `object`, `iterable`, non-ImmutableBase classes, and non-enum classes are rejected at
      * definition time via InvalidPropertyTypeException. Standalone `null` passes through
-     * here (as a builtin) and is rejected later in buildResolver().
+     * here (as a builtin) and is rejected later in Internal\Resolver::compile().
      *
      * When called for a top-level property ($fromUnion=false), also resolves
-     * whether the type is an SVO for use by buildResolver(). Union members
-     * skip this since unionTypeDecide() resolves SVO status dynamically.
+     * whether the type is an SVO (recorded in the metadata). Union members
+     * skip this; their matchers are chosen by type name in Internal\Resolver.
      *
      * @param ReflectionNamedType $refType The named type to scan and validate.
      * @throws InvalidPropertyTypeException
@@ -518,7 +467,7 @@ abstract readonly class ImmutableBase
      * Scans a union type by delegating each member to scanNamedType().
      * PHP does not allow nested unions, so each member is guaranteed to be
      * a ReflectionNamedType. Members are scanned with $fromUnion=true to
-     * skip isSVO resolution (handled dynamically in valueDecide()).
+     * skip isSVO resolution (matchers are chosen by type name in Internal\Resolver).
      *
      * @param ReflectionUnionType $refType The union type whose members will be individually scanned.
      * @return UnionType
@@ -556,387 +505,6 @@ abstract readonly class ImmutableBase
             null,
             $classname
         );
-    }
-    /**
-     * Resolves an array property annotated with #[ArrayOf] into a typed array.
-     * For a single declared type, delegates directly to arrayOfInitializeSingle()
-     * (flags precomputed outside the loop). For multiple types, each element is
-     * attempted against each type in declaration order; first match wins.
-     *
-     * Empty arrays are returned as-is. Null never reaches here (resolveValue()
-     * handles it first); any other non-array value is rejected.
-     *
-     * @param list<non-empty-string> $args The resolved #[ArrayOf] target types.
-     * @param mixed $value The raw input value (array or JSON string; anything else is rejected).
-     * @throws InvalidArrayOfItemException
-     * @throws InvalidValueException
-     * @return array<int|string, mixed>
-     */
-    private static function arrayOfInitialize(array $args, mixed $value): array
-    {
-        if (\is_string($value)) {
-            $value = self::jsonParser($value, false);
-        }
-        if (!\is_array($value)) {
-            throw new InvalidValueException('array', $value);
-        }
-        if ($value === []) {
-            return $value;
-        }
-        if (\count($args) === 1) {
-            return self::arrayOfInitializeSingle($args[0], $value);
-        }
-        $widenFloat = !\in_array('int', $args, true);
-        foreach ($value as $k => $v) {
-            $matched = false;
-            foreach ($args as $arg) {
-                try {
-                    $values[] = self::resolveArrayOfItem($arg, $v, $k, $widenFloat);
-                    $matched  = true;
-                    break;
-                } catch (InputRejectedException) {
-                    continue;
-                }
-            }
-            if (!$matched) {
-                throw new InvalidArrayOfItemException($k, implode('|', $args));
-            }
-        }
-
-        return $values ?? [];
-    }
-
-    /**
-     * Single-type fast path for arrayOfInitialize(). Precomputes class/enum/SVO
-     * flags outside the loop to avoid repeated class_exists / is_a calls.
-     *
-     * @param non-empty-string $arg The resolved target type.
-     * @param non-empty-array<int|string, mixed> $value Already-validated non-empty array.
-     * @throws InvalidArrayOfItemException
-     * @return list<mixed>
-     */
-    private static function arrayOfInitializeSingle(string $arg, array $value): array
-    {
-        $classExists = class_exists($arg);
-        $isEnum      = $classExists && enum_exists($arg);
-        $isSVO       = $classExists && is_a($arg, SingleValueObject::class, true);
-        foreach ($value as $k => $v) {
-            if (!$classExists) {
-                $values[] = self::resolveNativeArrayOfItem($arg, $v, $k);
-                continue;
-            }
-            $values[] = match (true) {
-                $v instanceof $arg => $v,
-                \is_array($v)      => $arg::fromArray($v),
-                $isEnum            => \is_string($v) || \is_int($v) ? self::analyzeEnum($arg, $v) : throw new InvalidArrayOfItemException($k, $arg),
-                $isSVO             => $arg::from($v),
-                \is_object($v)     => $arg::fromArray((array) $v),
-                \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
-                default            => throw new InvalidArrayOfItemException($k, $arg)
-            };
-        }
-
-        return $values ?? [];
-    }
-
-    /**
-     * Resolves one array element against a builtin (non-class) #[ArrayOf] target.
-     * Element types are matched by exact `get_debug_type()` name, with the same
-     * int-to-float widening PHP applies to a native `float` slot. Array elements
-     * carry no type declaration of their own, so unlike builtinTypeResolver()
-     * the widening needs an explicit cast here.
-     *
-     * Widening is suppressed when the declaring #[ArrayOf] also lists `int`, so
-     * an exact match always wins — mirroring union resolution in unionTypeDecide().
-     *
-     * @param non-empty-string $arg The builtin type name to match against.
-     * @param mixed $v The element value to resolve.
-     * @param int|string $k The element index, used in exception messages.
-     * @param bool $widenFloat Whether an int element may widen to a `float` target.
-     * @throws InvalidArrayOfItemException
-     * @return mixed
-     */
-    private static function resolveNativeArrayOfItem(string $arg, mixed $v, int | string $k, bool $widenFloat = true): mixed
-    {
-        return match (true) {
-            get_debug_type($v) === $arg                    => $v,
-            $widenFloat && $arg === 'float' && \is_int($v) => (float) $v,
-            default                                        => throw new InvalidArrayOfItemException($k, $arg)
-        };
-    }
-    /**
-     * Resolves a single array element against one candidate type.
-     * Used by the multi-type path in arrayOfInitialize(); throws on mismatch
-     * so the caller can fall through to the next candidate.
-     *
-     * @param non-empty-string $arg The candidate type to attempt.
-     * @param mixed $v The element value to resolve.
-     * @param int|string $k The element index, used in exception messages.
-     * @param bool $widenFloat Whether an int element may widen to a `float` target.
-     * @throws InvalidArrayOfItemException
-     * @return mixed
-     */
-    private static function resolveArrayOfItem(string $arg, mixed $v, int | string $k, bool $widenFloat): mixed
-    {
-        $classExists = class_exists($arg);
-        if (!$classExists) {
-            return self::resolveNativeArrayOfItem($arg, $v, $k, $widenFloat);
-        }
-        $isEnum = enum_exists($arg);
-        $isSVO  = !$isEnum && is_a($arg, SingleValueObject::class, true);
-
-        return match (true) {
-            $v instanceof $arg => $v,
-            \is_array($v)      => $arg::fromArray($v),
-            $isEnum            => \is_string($v) || \is_int($v) ? self::analyzeEnum($arg, $v) : throw new InvalidArrayOfItemException($k, $arg),
-            $isSVO             => $arg::from($v),
-            \is_object($v)     => $arg::fromArray((array) $v),
-            \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
-            default            => throw new InvalidArrayOfItemException($k, $arg)
-        };
-    }
-
-    /**
-     * Decodes a JSON string. When $returnInputOnException is true, returns
-     * the raw json_decode result (null on failure) without throwing — used by
-     * arrayOfInitialize() and resolveValue() for speculative parsing.
-     * When false, throws InvalidJsonException on malformed input.
-     *
-     * @param string $data The raw JSON string to decode.
-     * @param bool $returnInputOnException When true, returns the decode result silently on failure;
-     *                                     when false, throws InvalidJsonException.
-     * @throws InvalidJsonException
-     * @return array<string|int, mixed>|string|int|float|bool|null
-     */
-    private static function jsonParser(string $data, bool $returnInputOnException = true): mixed
-    {
-        if (!self::jsonLike($data) && !$returnInputOnException) {
-            throw new InvalidJsonException();
-        }
-        $data = json_decode($data, true);
-        if (json_last_error() !== JSON_ERROR_NONE && !$returnInputOnException) {
-            throw new InvalidJsonException();
-        }
-
-        return $data;
-    }
-    /**
-     * Compiles a type-specific resolver closure that validates and converts
-     * input values at runtime. The resolver is built once during property
-     * scanning and cached in the type metadata for repeated use.
-     *
-     * Dispatch order:
-     *   1. Union types → defer to unionTypeDecide() for try-each resolution
-     *   2. Non-builtin ImmutableBase subclass → fromArray / passthrough / SVO::from
-     *   3. Non-builtin enum → passthrough if already an enum instance,
-     *      string|int input is resolved via analyzeEnum()
-     *   4. Builtin → strict type checking via builtinTypeResolver()
-     *
-     * @param Type $type Compiled property type metadata.
-     * @param bool $isSub Whether the type is an ImmutableBase subclass (enables fromArray/from dispatch).
-     * @param bool $isSVO Whether the type is specifically a SingleValueObject (enables scalar from() dispatch).
-     * @return callable(mixed): mixed
-     */
-    private static function buildResolver(mixed $type, bool $isSub, bool $isSVO): callable
-    {
-        $typename = $type['typename']['string'];
-
-        return match (true) {
-            $type['isUnion']     => static fn(mixed $value)     => self::unionTypeDecide($type, $value),
-            !$type['isBuiltin']  => match (true) {
-                $isSub  => static fn(mixed $value): mixed  => match (true) {
-                    \is_array($value)                            => $typename::fromArray($value),
-                    $value instanceof $typename                  => $value,
-                    $isSVO                                       => $typename::from($value),
-                    \is_string($value) && self::jsonLike($value) => $typename::fromJson($value),
-                    default                                      => throw new InvalidValueException($typename, $value)
-                },
-                default => static fn(mixed $value): mixed => match (true) {
-                    $value instanceof $typename           => $value,
-                    \is_string($value) || \is_int($value) => self::analyzeEnum($typename, $value),
-                    default                               => throw new InvalidValueException($typename, $value),
-                },
-            },
-            $typename === 'null' => throw new InvalidPropertyTypeException($typename),
-            default              => self::builtinTypeResolver($typename),
-        };
-    }
-    /**
-     * Returns a strict type-checking closure for PHP builtin types.
-     * Each resolver enforces exact type matching (no coercion under strict_types=1),
-     * with the single exception PHP itself makes: an int widens to float, matching
-     * the behaviour of a native `float` parameter or property under strict_types=1.
-     * The widening needs no explicit cast — the closure's `: float` return type
-     * performs it, since int-to-float is permitted even in strict mode.
-     * The `null` type is rejected at definition time as it represents a
-     * contradictory declaration — a property that can only ever be null.
-     * The literal types `false` and `true` accept only that exact value.
-     * The `mixed` type (default branch) passes all values through without validation.
-     *
-     * @template T of (array|bool|float|int|string|null)
-     * @param string $typename The PHP builtin type name (e.g. "string", "int", "array", "mixed").
-     * @throws InvalidPropertyTypeException
-     * @return callable(mixed): T
-     */
-    private static function builtinTypeResolver(string $typename)
-    {
-        return match ($typename) {
-            'string' => static fn($v): string => \is_string($v) ? $v : throw new InvalidValueException('string', $v),
-            'int'    => static fn($v): int    => \is_int($v) ? $v : throw new InvalidValueException('int', $v),
-            'bool'   => static fn($v): bool   => \is_bool($v) ? $v : throw new InvalidValueException('bool', $v),
-            'array'  => static fn($v): array => \is_array($v) ? $v : throw new InvalidValueException('array', $v),
-            'float'  => static fn($v): float  => \is_float($v) || \is_int($v) ? $v : throw new InvalidValueException('float', $v),
-            'false'  => static fn($v): bool   => $v === false ? $v : throw new InvalidValueException('false', $v),
-            'true'   => static fn($v): bool   => $v === true ? $v : throw new InvalidValueException('true', $v),
-            default  => static fn($v): mixed  => $v,
-        };
-    }
-    /**
-     * Resolves a value against a union type by attempting each member type in
-     * the order PHP reports them. The first successful match wins.
-     *
-     * That order is *not* the order the property declared. PHP normalizes union
-     * members before Reflection ever sees them: classes and enums come first and
-     * keep their relative declaration order, then builtins in the fixed sequence
-     * string, int, float, bool. So `string|Foo` is attempted as `Foo, string`,
-     * and `float|int|string` as `string, int, float`. Only the relative order of
-     * two class members is under the declaring code's control.
-     * (#[ArrayOf] targets are attribute arguments, are not normalized, and are
-     * attempted in true declaration order — see arrayOfInitialize().)
-     *
-     * If no member matches exactly, an int value widens to a `float` member when
-     * the union declares one — mirroring PHP, where an exact union match always
-     * takes precedence over int-to-float widening (so `int|float` keeps an int as
-     * int, while `float|string` widens it). That precedence needs no guard here:
-     * PHP normalizes union member order and always places `int` before `float`,
-     * so an int value has already matched and returned by the time this runs.
-     * (#[ArrayOf] targets are attribute arguments, are not normalized, and do
-     * need the explicit guard — see resolveNativeArrayOfItem().) The widening
-     * check runs only on the cold path, after every member has already failed,
-     * so it costs nothing on a successful match. `float` is a reserved word and can never be a class
-     * name, so a bare name lookup needs no `isBuiltin` guard.
-     *
-     * That branch deliberately returns the int unchanged rather than casting it:
-     * every caller hands the result to the hydrator, which assigns it to the
-     * declared typed property, and PHP performs the int-to-float conversion at
-     * that assignment. Contrast resolveNativeArrayOfItem(), where the value ends
-     * up in a plain array element with no type declaration to convert it, so the
-     * cast there is required.
-     *
-     * If all members still fail, throws InvalidValueException with the full
-     * union type signature.
-     *
-     * Catches every input rejection (the RuntimeException branch: initialization
-     * and validation failures, including a member's own #[Strict] violation) to
-     * allow fallthrough to the next member. Definition errors still propagate.
-     *
-     * @param UnionType $unionType Compiled union type metadata containing all member types.
-     * @param mixed $value The raw input value to resolve against the union members.
-     * @throws InvalidValueException
-     * @return mixed
-     */
-    private static function unionTypeDecide(array $unionType, mixed $value): mixed
-    {
-        foreach ($unionType['types'] as $type) {
-            try {
-                return self::valueDecide($type, $value);
-            } catch (InputRejectedException) {
-                continue;
-            }
-        }
-        if (\is_int($value) && \in_array('float', $unionType['typename']['array'], true)) {
-            return $value;
-        }
-        throw new InvalidValueException($unionType['typename']['string'], $value);
-    }
-    /**
-     * Runtime type resolution used exclusively by unionTypeDecide() for
-     * individual union member matching. Unlike buildResolver() which compiles
-     * closures at scan time, this performs inline dispatch per attempt.
-     *
-     * For non-builtin types, resolves in priority order:
-     *   1. Already-constructed object (passthrough)
-     *   2. String + enum class → analyzeEnum()
-     *   3. Array + ImmutableBase subclass → fromArray()
-     *   4. SVO subclass → from()
-     *
-     * For builtin types, performs strict type validation.
-     *
-     * @param NamedTypeFromUnion $type A single named type metadata entry (one member of a union).
-     * @param mixed $value The raw input value to match against this type.
-     * @throws InvalidValueException
-     * @return mixed
-     */
-    private static function valueDecide(array $type, mixed $value): mixed
-    {
-        $typename = $type['typename']['string'];
-        if (!$type['isBuiltin']) {
-            return match (true) {
-                $value instanceof $typename                                                        => $value,
-                (\is_string($value) || \is_int($value)) && $type['isEnum']                         => self::analyzeEnum($typename, $value),
-                \is_array($value) && is_a($typename, self::class, true)                            => $typename::fromArray($value),
-                is_a($typename, SingleValueObject::class, true) && !\is_object($value)             => $typename::from($value),
-                \is_string($value) && self::jsonLike($value) && is_a($typename, self::class, true) => $typename::fromJson($value),
-                default                                                                            => throw new InvalidValueException($typename, $value),
-            };
-        }
-        if (
-            !match ($typename) {
-                'int'    => \is_int($value),
-                'float'  => \is_float($value),
-                'string' => \is_string($value),
-                'bool'   => \is_bool($value),
-                'false'  => $value === false,
-                'true'   => $value === true,
-                'array'  => \is_array($value),
-                default  => false, // `null`: a null value never reaches member matching
-            }
-        ) {
-            throw new InvalidValueException($typename, $value);
-        }
-
-        return $value;
-    }
-    /**
-     * Resolves a string or integer value to an enum case. Tries two strategies:
-     *   1. Constant lookup by name (works for both UnitEnum and BackedEnum).
-     *      Only constants holding a case of this enum count — a case alias
-     *      (`const DEFAULT = self::Low`) resolves, a plain `const LIMIT = 10`
-     *      does not.
-     *   2. BackedEnum::tryFrom() by backed value
-     *
-     * This dual approach allows users to provide either the case name ("HIGH")
-     * or the backed value (3) for BackedEnum types.
-     *
-     * @param class-string $class The fully-qualified enum class name.
-     * @param string|int $value The case name or backed value to resolve.
-     * @return BackedEnum|UnitEnum
-     */
-    private static function analyzeEnum(string $class, string | int $value): BackedEnum | UnitEnum
-    {
-        return match (true) {
-            \defined($case = "$class::$value") && ($case = constant($case)) instanceof $class => $case,
-            self::backedBy($class, $value) && $case = $class::tryFrom($value)                   => $case,
-            default                                                                             => throw new InvalidEnumValueException($class, $value)
-        };
-    }
-    /**
-     * Whether $class is a BackedEnum whose backing type matches $value's type,
-     * i.e. whether $class::tryFrom($value) can be called without a TypeError
-     * under strict_types. The backing type is read once per enum and memoized.
-     *
-     * @param class-string $class
-     */
-    private static function backedBy(string $class, string | int $value): bool
-    {
-        static $backing = [];
-        if (!\array_key_exists($class, $backing)) {
-            $backing[$class] = is_a($class, BackedEnum::class, true)
-            ? (string) (new \ReflectionEnum($class))->getBackingType()
-            : null;
-        }
-
-        return $backing[$class] === get_debug_type($value);
     }
     /**
      * Logs redundant keys (present in input but absent in class definition)
@@ -1086,7 +654,7 @@ abstract readonly class ImmutableBase
                 default                  => self::applyArrayDeepUpdate($current, $sub, $separator),
             };
             if ($types[$root]['arrayOf'] !== null) {
-                $values[$root] = self::resolveValue($types[$root], $values[$root], false);
+                $values[$root] = Resolver::value($types[$root], $values[$root]);
             }
         }
     }
@@ -1208,22 +776,6 @@ abstract readonly class ImmutableBase
         };
     }
     /**
-     * Fast check for JSON-like string values. Only triggers speculative
-     * parsing for strings starting with '{' or '[' (after trimming whitespace).
-     * Non-string values return false immediately to avoid unnecessary work
-     * in the common case of scalar or object inputs.
-     *
-     * @param mixed $value The value to check; only strings starting with '{' or '[' return true.
-     * @return bool
-     */
-    private static function jsonLike(mixed $value): bool
-    {
-        static $open = ['{' => true, '[' => true];
-
-        return \is_string($value) && isset($open[trim($value)[0] ?? '']);
-    }
-
-    /**
      * Loads pre-generated property metadata from a cache file, bypassing
      * reflection-based scanning. The cache must return an associative array
      * keyed by fully-qualified class name. Uses require_once to prevent
@@ -1286,7 +838,7 @@ abstract readonly class ImmutableBase
             throw new InvalidJsonException();
         }
 
-        return new static(self::jsonParser($data, false));
+        return new static(Json::decode($data, false));
     }
 
     /**
@@ -1404,7 +956,7 @@ abstract readonly class ImmutableBase
             $props          = Metadata::get($static);
             $types          = $props['types'];
             $normalizedData = match (\is_string($data)) {
-                true    => self::jsonParser($data, false),
+                true    => Json::decode($data, false),
                 default => (array) $data
             };
             if ($props['inputKeyCase'] !== null || $props['propertyInputKeyCases'] !== null) {
@@ -1417,7 +969,7 @@ abstract readonly class ImmutableBase
                     $deepUpdates[$root][$rest] = $value;
                     $errorPath                 = $root;
                 } elseif (\array_key_exists($path, $values) && isset($types[$path])) {
-                    $values[$path] = self::resolveValue($types[$path], $value, true);
+                    $values[$path] = Resolver::value($types[$path], $value, true);
                 } else {
                     $undeclared[] = $path;
                 }

@@ -91,6 +91,12 @@ class TypeErrorTest extends TestCase
         self::make(['levels' => [1.5]]);
     }
 
+    public function testArrayOfEnumRejectsArrayItem(): void
+    {
+        $this->expectException(InvalidArrayOfItemException::class);
+        self::make(['levels' => [['low']]]);
+    }
+
     public function testEnumNonCaseConstantIsNotACase(): void
     {
         $this->expectException(InvalidEnumValueException::class);
@@ -123,14 +129,14 @@ class TypeErrorTest extends TestCase
 
     public function testNoTypeErrorEscapesForAnyScalarAgainstAnyProperty(): void
     {
-        $inputs = [0, 1, 1.5, true, false, '', 'x', '[x', '{}', [], [1], ['a' => 1], new \stdClass()];
+        $inputs = [0, 1, 1.5, true, false, '', 'x', '[x', '{}', [], [1], ['a' => 1], [[1]], [new \stdClass()], new \stdClass()];
         foreach (array_keys(self::BASE) as $property) {
             foreach ($inputs as $input) {
                 try {
                     self::make([$property => $input]);
                 } catch (ImmutableBaseException) {
-                } catch (\TypeError $e) {
-                    $this->fail("TypeError for \$$property given " . get_debug_type($input) . ': ' . $e->getMessage());
+                } catch (\Error $e) {
+                    $this->fail(get_debug_type($e) . " for \$$property given " . json_encode($input) . ': ' . $e->getMessage());
                 }
             }
         }
