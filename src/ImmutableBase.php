@@ -33,9 +33,9 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidEnumVal
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidJsonException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
+use ReallifeKip\ImmutableBase\Exceptions\RuntimeException as InputRejectedException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
-use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Objects\ValueObject;
@@ -532,20 +532,24 @@ abstract readonly class ImmutableBase
      * (flags precomputed outside the loop). For multiple types, each element is
      * attempted against each type in declaration order; first match wins.
      *
-     * Empty arrays and non-array values are returned as-is to allow upstream
-     * validation (e.g. nullable ArrayOf accepting null).
+     * Empty arrays are returned as-is. Null never reaches here (resolveValue()
+     * handles it first); any other non-array value is rejected.
      *
      * @param list<non-empty-string> $args The resolved #[ArrayOf] target types.
-     * @param mixed $value The raw input value (array, JSON string, or passthrough for null).
+     * @param mixed $value The raw input value (array or JSON string; anything else is rejected).
      * @throws InvalidArrayOfItemException
-     * @return mixed
+     * @throws InvalidValueException
+     * @return array<int|string, mixed>
      */
-    private static function arrayOfInitialize(array $args, mixed $value): mixed
+    private static function arrayOfInitialize(array $args, mixed $value): array
     {
         if (\is_string($value)) {
             $value = self::jsonParser($value, false);
         }
-        if (!\is_array($value) || empty($value)) {
+        if (!\is_array($value)) {
+            throw new InvalidValueException('array', $value);
+        }
+        if ($value === []) {
             return $value;
         }
         if (\count($args) === 1) {
@@ -559,7 +563,7 @@ abstract readonly class ImmutableBase
                     $values[] = self::resolveArrayOfItem($arg, $v, $k, $widenFloat);
                     $matched  = true;
                     break;
-                } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException | InvalidArrayOfItemException) {
+                } catch (InputRejectedException) {
                     continue;
                 }
             }
@@ -593,7 +597,7 @@ abstract readonly class ImmutableBase
             $values[] = match (true) {
                 $v instanceof $arg => $v,
                 \is_array($v)      => $arg::fromArray($v),
-                $isEnum            => self::analyzeEnum($arg, $v),
+                $isEnum            => \is_string($v) || \is_int($v) ? self::analyzeEnum($arg, $v) : throw new InvalidArrayOfItemException($k, $arg),
                 $isSVO             => $arg::from($v),
                 \is_object($v)     => $arg::fromArray((array) $v),
                 \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
@@ -653,7 +657,7 @@ abstract readonly class ImmutableBase
         return match (true) {
             $v instanceof $arg => $v,
             \is_array($v)      => $arg::fromArray($v),
-            $isEnum            => self::analyzeEnum($arg, $v),
+            $isEnum            => \is_string($v) || \is_int($v) ? self::analyzeEnum($arg, $v) : throw new InvalidArrayOfItemException($k, $arg),
             $isSVO             => $arg::from($v),
             \is_object($v)     => $arg::fromArray((array) $v),
             \is_string($v)     => \is_array($json = self::jsonParser($v)) ? $arg::fromArray($json) : throw new InvalidArrayOfItemException($k, $arg),
@@ -735,6 +739,7 @@ abstract readonly class ImmutableBase
      * performs it, since int-to-float is permitted even in strict mode.
      * The `null` type is rejected at definition time as it represents a
      * contradictory declaration — a property that can only ever be null.
+     * The literal types `false` and `true` accept only that exact value.
      * The `mixed` type (default branch) passes all values through without validation.
      *
      * @template T of (array|bool|float|int|string|null)
@@ -750,6 +755,8 @@ abstract readonly class ImmutableBase
             'bool'   => static fn($v): bool   => \is_bool($v) ? $v : throw new InvalidValueException('bool', $v),
             'array'  => static fn($v): array => \is_array($v) ? $v : throw new InvalidValueException('array', $v),
             'float'  => static fn($v): float  => \is_float($v) || \is_int($v) ? $v : throw new InvalidValueException('float', $v),
+            'false'  => static fn($v): bool   => $v === false ? $v : throw new InvalidValueException('false', $v),
+            'true'   => static fn($v): bool   => $v === true ? $v : throw new InvalidValueException('true', $v),
             default  => static fn($v): mixed  => $v,
         };
     }
@@ -788,8 +795,9 @@ abstract readonly class ImmutableBase
      * If all members still fail, throws InvalidValueException with the full
      * union type signature.
      *
-     * Catches InvalidValueException, ValidationChainException, and
-     * InvalidEnumValueException to allow fallthrough to the next member.
+     * Catches every input rejection (the RuntimeException branch: initialization
+     * and validation failures, including a member's own #[Strict] violation) to
+     * allow fallthrough to the next member. Definition errors still propagate.
      *
      * @param UnionType $unionType Compiled union type metadata containing all member types.
      * @param mixed $value The raw input value to resolve against the union members.
@@ -801,7 +809,7 @@ abstract readonly class ImmutableBase
         foreach ($unionType['types'] as $type) {
             try {
                 return self::valueDecide($type, $value);
-            } catch (InvalidValueException | ValidationChainException | InvalidEnumValueException | RequiredValueException) {
+            } catch (InputRejectedException) {
                 continue;
             }
         }
@@ -847,7 +855,10 @@ abstract readonly class ImmutableBase
                 'float'  => \is_float($value),
                 'string' => \is_string($value),
                 'bool'   => \is_bool($value),
-                default  => \is_array($value)
+                'false'  => $value === false,
+                'true'   => $value === true,
+                'array'  => \is_array($value),
+                default  => false, // `null`: a null value never reaches member matching
             }
         ) {
             throw new InvalidValueException($typename, $value);
@@ -857,7 +868,10 @@ abstract readonly class ImmutableBase
     }
     /**
      * Resolves a string or integer value to an enum case. Tries two strategies:
-     *   1. Constant lookup by name (works for both UnitEnum and BackedEnum)
+     *   1. Constant lookup by name (works for both UnitEnum and BackedEnum).
+     *      Only constants holding a case of this enum count — a case alias
+     *      (`const DEFAULT = self::Low`) resolves, a plain `const LIMIT = 10`
+     *      does not.
      *   2. BackedEnum::tryFrom() by backed value
      *
      * This dual approach allows users to provide either the case name ("HIGH")
@@ -870,10 +884,28 @@ abstract readonly class ImmutableBase
     private static function analyzeEnum(string $class, string | int $value): BackedEnum | UnitEnum
     {
         return match (true) {
-            \defined($case = "$class::$value")                                       => constant($case),
-            is_a($class, BackedEnum::class, true) && $case = $class::tryFrom($value) => $case,
-            default                                                                  => throw new InvalidEnumValueException($class, $value)
+            \defined($case = "$class::$value") && ($case = constant($case)) instanceof $class => $case,
+            self::backedBy($class, $value) && $case = $class::tryFrom($value)                   => $case,
+            default                                                                             => throw new InvalidEnumValueException($class, $value)
         };
+    }
+    /**
+     * Whether $class is a BackedEnum whose backing type matches $value's type,
+     * i.e. whether $class::tryFrom($value) can be called without a TypeError
+     * under strict_types. The backing type is read once per enum and memoized.
+     *
+     * @param class-string $class
+     */
+    private static function backedBy(string $class, string | int $value): bool
+    {
+        static $backing = [];
+        if (!\array_key_exists($class, $backing)) {
+            $backing[$class] = is_a($class, BackedEnum::class, true)
+            ? (string) (new \ReflectionEnum($class))->getBackingType()
+            : null;
+        }
+
+        return $backing[$class] === get_debug_type($value);
     }
     /**
      * Logs redundant keys (present in input but absent in class definition)

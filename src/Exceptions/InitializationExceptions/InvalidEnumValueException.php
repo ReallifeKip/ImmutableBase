@@ -11,11 +11,11 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationException;
  * neither by constant name lookup nor by BackedEnum::tryFrom().
  *
  * @param string $enumName The fully-qualified enum class name.
- * @param string $value The unresolvable value.
+ * @param string|int $value The unresolvable value.
  */
 class InvalidEnumValueException extends InitializationException
 {
-    public function __construct(string $enumName, string $value)
+    public function __construct(string $enumName, string | int $value)
     {
         parent::__construct("'$value' does not match any of $enumName defined names or cases.");
     }

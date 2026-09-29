@@ -11,12 +11,12 @@ use ReallifeKip\ImmutableBase\Exceptions\ValidationException;
  * to the declared target type — either an ImmutableBase subclass or a
  * Native scalar type (e.g. an integer where a DTO or string is expected).
  *
- * @param int $index The zero-based index of the invalid element.
+ * @param int|string $index The key of the invalid element (an int for lists, a string for keyed input).
  * @param string $targetType The expected ImmutableBase class FQCN or Native scalar type name.
  */
 class InvalidArrayOfItemException extends ValidationException
 {
-    public function __construct(int $index, string $targetType)
+    public function __construct(int | string $index, string $targetType)
     {
         parent::__construct(
             class_exists($targetType) ?

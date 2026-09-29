@@ -28,8 +28,8 @@ abstract readonly class ValueObject extends ImmutableBase
                 parent::__construct($data);
                 $cache = self::state()['properties'];
             } else {
-                $this->value = $data;
                 $cache       = $this::buildPropertyInheritanceChain($this);
+                $this->value = self::resolveValue($cache[static::class]['types']['value'], $data);
             }
             $class = $cache[static::class];
             $this::enforceValidationRules($this, $class['validateFromSelf'] ? $class['classTree'] : $class['classTreeReversed'], $cache);
