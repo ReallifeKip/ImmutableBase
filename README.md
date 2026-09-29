@@ -824,8 +824,14 @@ vendor/bin/ib-cacher --clear
 Generates documentation for all ImmutableBase subclasses in the project. Supports Mermaid class diagrams, Markdown property tables, and TypeScript declarations.
 
 ```bash
+# Interactive: choose the format and output directory
 vendor/bin/ib-writer
+
+# Non-interactive (CI, composer scripts): writes docs/doc.ts
+vendor/bin/ib-writer --format=ts --output=docs
 ```
+
+`--format` (`-f`) is one of `mmd`, `md`, `ts`. `--output` (`-o`) defaults to `./docs` and must be an existing, writable directory. Failures exit with status `1`.
 
 ---
 
@@ -852,6 +858,8 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 `InvalidKeyCaseException` - `#[InputKeyTo]` or `#[OutputKeyTo]` received a value that is not a `KeyCase` enum instance (e.g. a plain string instead of `KeyCase::Camel`).
 
 `InvalidCompareTargetException` - The `equals()` comparison target is not the same class, or an array contains a non-ImmutableBase object that cannot be compared.
+
+`InvalidSerializeTargetException` - `toArray()` / `toJson()` met a non-ImmutableBase object (held by a `mixed` or plain `array` property) that does not implement `JsonSerializable`.
 
 `InvalidWithPathException` - A `with()` deep path targets a scalar property that cannot be traversed further.
 

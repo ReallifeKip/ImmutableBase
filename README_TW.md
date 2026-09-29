@@ -824,8 +824,14 @@ vendor/bin/ib-cacher --clear
 為專案所有 ImmutableBase 子類物件產生文件，可產生 Mermaid 類別圖、Markdown 屬性表及 TypeScript 型別宣告。
 
 ```bash
+# 互動模式：選擇格式與輸出目錄
 vendor/bin/ib-writer
+
+# 非互動模式（CI、composer scripts）：輸出 docs/doc.ts
+vendor/bin/ib-writer --format=ts --output=docs
 ```
+
+`--format`（`-f`）可為 `mmd`、`md`、`ts`。`--output`（`-o`）預設為 `./docs`，必須是已存在且可寫入的目錄。失敗時以狀態碼 `1` 結束。
 
 ---
 
@@ -852,6 +858,8 @@ vendor/bin/ib-writer
 `InvalidKeyCaseException` - `#[InputKeyTo]` 或 `#[OutputKeyTo]` 接收到非 `KeyCase` enum 實例的值（例如傳入純字串而非 `KeyCase::Camel`）。
 
 `InvalidCompareTargetException` - `equals()` 的比較對象與自身類不同，或陣列中包含無法比較的非 ImmutableBase 物件。
+
+`InvalidSerializeTargetException` - `toArray()` / `toJson()` 遇到未實作 `JsonSerializable` 的非 ImmutableBase 物件（存放於 `mixed` 或一般 `array` 屬性中）。
 
 `InvalidWithPathException` - `with()` 的深層路徑指向純量屬性，無法向下展開。
 

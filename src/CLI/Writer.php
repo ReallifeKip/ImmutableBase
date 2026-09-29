@@ -29,7 +29,8 @@ use Throwable;
  * Delegates rendering to Mermaid, Markdown, or Typescript strategy
  * classes. Output format is selected via CLI argument or interactive prompt.
  *
- * Usage: php writer [mmd|md|ts] [output-directory]
+ * Usage: vendor/bin/ib-writer [--format=mmd|md|ts] [--output=directory]
+ *        (no --format: interactive prompts)
  *
  * @phpstan-import-type ClassMap from Types
  * @phpstan-import-type NamespaceGroup from Types

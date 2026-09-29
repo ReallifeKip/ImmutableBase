@@ -22,10 +22,36 @@ if (!class_exists('Composer\Autoload\ClassLoader')) {
     exit(1);
 }
 
+$options     = getopt('f:o:', ['format:', 'output:']);
+$format      = $options['format'] ?? $options['f'] ?? null;
+$output      = $options['output'] ?? $options['o'] ?? null;
+$interactive = $format === null;
+
+$fail = static function (string $message): never {
+    fwrite(STDERR, "\033[31mError: $message\033[0m\n");
+    exit(1);
+};
+
+if ($interactive && $output !== null) {
+    $fail('--output requires --format (mmd, md or ts).');
+}
+
+if (!$interactive) {
+    $output ??= getcwd() . '/docs';
+    match (true) {
+        !\in_array($format, ['mmd', 'md', 'ts'], true) => $fail("Unknown format '$format'; expected mmd, md or ts."),
+        !is_dir($output)                              => $fail("Directory not found: $output"),
+        !is_writable($output)                         => $fail("Directory not writable: $output"),
+        default                                       => null,
+    };
+}
+
 $dependencies = [
-    'laravel/prompts'                   => 'Laravel\Prompts\Prompt',
     'phpdocumentor/reflection-docblock' => 'phpDocumentor\Reflection\DocBlockFactory',
 ];
+if ($interactive) {
+    $dependencies['laravel/prompts'] = 'Laravel\Prompts\Prompt';
+}
 
 $missing = [];
 foreach ($dependencies as $package => $class) {
@@ -47,6 +73,13 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\suggest;
 use Laravel\Prompts\Prompt;
 use ReallifeKip\ImmutableBase\CLI\Writer;
+
+if (!$interactive) {
+    $outputFile = "$output/doc.$format";
+    Writer::generate($format, $outputFile);
+    fwrite(STDERR, "\033[32mDone! Document generated in $outputFile.\033[0m\n");
+    exit(0);
+}
 
 Prompt::interactive(true);
 
