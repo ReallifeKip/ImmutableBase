@@ -109,29 +109,21 @@ abstract readonly class ImmutableBase
     protected function __construct(array $data = [])
     {
         self::executeSafely(function ($static, &$errorPath) use ($data) {
-            if (!Metadata::has($static)) {
-                $this::buildPropertyInheritanceChain($this);
-            }
+            $class = Metadata::get($static) ?? $this::buildPropertyInheritanceChain($this)[$static];
             if (($logPath = Metadata::debugPath()) !== null) {
                 self::logging($data, $static, $logPath);
             }
-            $class = Metadata::get($static);
             if ($class['inputKeyCase'] !== null || $class['propertyInputKeyCases'] !== null) {
                 $data = KeyCaser::remapInput($data, $class);
             }
             if (
                 !$class['isLax'] &&
-                (Metadata::isStrict() || $class['isStrict']) && $redundant = array_keys(array_diff_key($data, $class['types']))
+                ($class['isStrict'] || Metadata::isStrict()) && $redundant = array_keys(array_diff_key($data, $class['types']))
             ) {
                 throw new StrictViolationException($class['name'], $redundant);
             }
-            $compiled = array_filter(array_map(fn($t) => $t['defaults'] ?? null, $class['types']), fn($v) => $v !== null);
-            $data     = array_merge($compiled, $data);
-            foreach ($class['classTreeReversed'] as $classname) {
-                $ref = Metadata::get($classname);
-                if ($ref === null || !($ref['hasPrepareInput'] ?? false)) {
-                    continue;
-                }
+            $data = array_merge($class['defaultsMap'], $data);
+            foreach ($class['prepareChain'] as $classname) {
                 $data = array_merge($data, array_intersect_key($classname::prepareInput($data), $data));
             }
             $class['hydrator']($this, Resolver::properties($data, $class['types'], $errorPath));
@@ -345,7 +337,10 @@ abstract readonly class ImmutableBase
             return $data instanceof $static ? $data : $static::from($data);
         }
 
-        return self::executeSafely(function ($static, &$errorPath) use ($data, $separator) {
+        // Same error boundary as executeSafely(), written inline: with() is a
+        // hot path and the closure allocation per call is measurable.
+        $errorPath = null;
+        try {
             $values         = get_object_vars($this);
             $props          = Metadata::get($static);
             $types          = $props['types'];
@@ -375,7 +370,7 @@ abstract readonly class ImmutableBase
             if (isset($deepUpdates)) {
                 PathUpdater::apply($values, $deepUpdates, $types, $separator, $errorPath);
             }
-            $instance = Metadata::reflection($static)->newInstanceWithoutConstructor();
+            $instance = $props['ref']->newInstanceWithoutConstructor();
             $props['hydrator']($instance, $values);
             if (!$props['isDTO']) {
                 /** @var class-string<ValueObject> $static */
@@ -387,7 +382,9 @@ abstract readonly class ImmutableBase
             }
 
             return $instance;
-        });
+        } catch (ImmutableBaseException $e) {
+            throw $e->prependPath($static, $errorPath);
+        }
     }
     /**
      * Preprocessing step for input normalization before property resolution.

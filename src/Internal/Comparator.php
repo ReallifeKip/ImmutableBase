@@ -51,7 +51,8 @@ final class Comparator
             return false;
         }
         foreach ($a as $k => $v) {
-            if (!\array_key_exists($k, $b) || !self::valueEquals($v, $b[$k])) {
+            // Identical values (equal scalars, the same instance) need no deep comparison
+            if (!\array_key_exists($k, $b) || ($v !== $b[$k] && !self::valueEquals($v, $b[$k]))) {
                 return false;
             }
         }

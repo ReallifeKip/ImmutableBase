@@ -53,7 +53,7 @@ class Cacher
     public function scan(string $dir): void
     {
         $outputPath     = Metadata::cachePath();
-        $exclude        = array_flip(['ref', 'validateMethod', 'hydrator']);
+        $exclude        = array_flip(['ref', 'validateMethod', 'hydrator', 'defaultsMap', 'prepareChain']);
         $excludeType    = array_flip(['ref', 'typeRef', 'resolver', 'propertyRef']);
         $excludeSubType = array_flip(['typeRef']);
         $cache          = [];

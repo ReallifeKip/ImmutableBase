@@ -97,8 +97,22 @@ final class Scanner
                     }
                 );
             }
+            $props['ref']      = $ref;
             $props['types']    = array_map(Resolver::compile(...), $props['types']);
             $props['hydrator'] = self::createHydrator($classname, array_keys($props['types']));
+            // Per-construction work done once here: the non-null defaults to merge under the input
+            $props['defaultsMap'] = array_filter(array_map(static fn(array $t) => $t['defaults'] ?? null, $props['types']), static fn($v) => $v !== null);
+            Metadata::put($classname, $props);
+            $compiled[] = $classname;
+        }
+        // Needs every ancestor compiled first, hence a second pass: the classes
+        // (root first) whose own prepareInput() runs during construction
+        foreach ($compiled ?? [] as $classname) {
+            $props                 = Metadata::get($classname);
+            $props['prepareChain'] = array_values(array_filter(
+                $props['classTreeReversed'],
+                static fn(string $class) => Metadata::get($class)['hasPrepareInput'] ?? false
+            ));
             Metadata::put($classname, $props);
         }
 
