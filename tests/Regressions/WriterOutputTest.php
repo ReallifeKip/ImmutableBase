@@ -85,6 +85,21 @@ class WriterOutputTest extends TestCase
         $this->assertSame(0, $code, implode("\n", $out));
     }
 
+    public function testTypescriptNullableMatchesSerializedShape(): void
+    {
+        $ts = $this->generate('ts');
+        // Emitted as "quote": null by toArray()/toJson()
+        $this->assertStringContainsString('quote: Tests.Regressions.Objects.Writer.Quote | null', self::block($ts, 'interface DocOrder {'));
+        $sparse = self::block($ts, 'interface DocSparse {');
+        // #[SkipOnNull]: the key is omitted instead
+        $this->assertStringContainsString('omittedWhenNull?: string', $sparse);
+        $this->assertStringNotContainsString('omittedWhenNull?: string | null', $sparse);
+        // #[KeepOnNull] overrides it
+        $this->assertStringContainsString('keptAsNull: string | null', $sparse);
+        // a union that already lists null gets no second one
+        $this->assertStringContainsString('unionWithNull?: Tests.Regressions.Objects.Writer.DocItem | Tests.Regressions.Objects.Writer.DocEmail', $sparse);
+    }
+
     // ─── Mermaid ─────────────────────────────────────────────
 
     public function testMermaidShowsPropertiesInheritedFromAbstractParent(): void

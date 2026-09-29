@@ -81,6 +81,28 @@ abstract class Typescript
     }
 
     /**
+     * Builds the interface member key and type for one property, mirroring
+     * what toArray() / toJson() actually emit for a null value:
+     *   - #[SkipOnNull] without #[KeepOnNull] → the key is omitted: `name?: T`
+     *   - any other nullable property → the key holds null: `name: T | null`
+     *   - non-nullable → `name: T`
+     *
+     * @param Type $type Compiled property type metadata.
+     * @return array{string, string} Member key (with `?` when optional) and TypeScript type.
+     */
+    private static function propertySignature(array $type): array
+    {
+        $tsType  = self::resolvePropertyType($type);
+        $members = $type['isUnion'] ? array_values(array_diff(explode(' | ', $tsType), ['null'])) : [$tsType];
+        $omitted = $type['allowsNull'] && $type['skipOnNull'] && !$type['keepOnNull'];
+        if ($type['allowsNull'] && !$omitted) {
+            $members[] = 'null';
+        }
+
+        return [$type['propertyName'] . ($omitted ? '?' : ''), implode(' | ', $members)];
+    }
+
+    /**
      * Collects enum types referenced by a property — directly, as a union
      * member, or as an #[ArrayOf] element — for later output.
      * BackedEnums store case name => value pairs; UnitEnums store case names only.
@@ -210,8 +232,8 @@ abstract class Typescript
             }
             $properties = [];
             foreach ($types as $type) {
-                $key              = $type['propertyName'] . ($type['allowsNull'] ? '?' : '');
-                $properties[$key] = self::resolvePropertyType($type);
+                [$key, $tsType]   = self::propertySignature($type);
+                $properties[$key] = $tsType;
                 self::collectEnums($type);
             }
             $namespaces[$namespace]['interfaces'][$shortName] = $properties;
