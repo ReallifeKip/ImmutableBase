@@ -41,6 +41,7 @@ abstract class Markdown
      */
     public static function namespaceBlocksGenerate(array $namespaceGroups, array $classMap, array $shortNameCount): array
     {
+        self::$enums = [];
         foreach ($namespaceGroups as $classes) {
             foreach ($classes as $entry) {
                 $content = array_merge($content ?? [], Writer::buildClassBlock($entry, $classMap, $shortNameCount));
@@ -82,25 +83,20 @@ abstract class Markdown
             /** @var ReflectionProperty $propRef */
             $propRef  = $type['propertyRef'] ?? $ref->getProperty($type['propertyName']);
             $propDocs = self::docParser($propRef->getDocComment());
-            $required = match ($type['allowsNull']) {
-                true    => '',
-                default => 'yes'
+            $required = match (true) {
+                $type['allowsNull'], isset($type['defaults']) => '',
+                default                                       => 'yes'
             };
             if ($type['isUnion']) {
                 /** @var UnionType $type */
                 $typeNames = array_map(self::unionTypeNamesParser(...), $type['types']);
                 $typename  = join('<br>', $typeNames);
+            } elseif ($type['arrayOf'] !== null) {
+                $elements = array_map(static fn(string $t) => self::typeLink($t, !class_exists($t)), $type['arrayOf']);
+                $typename = \count($elements) === 1 ? "{$elements[0]}[]" : '(' . implode(', ', $elements) . ')[]';
             } else {
                 /** @var NamedType $type */
-                $typename = $type['typename']['string'];
-                if (!$type['isBuiltin']) {
-                    $shortname = explode('\\', $typename);
-                    $shortname = end($shortname);
-                    $typename  = "[$shortname](#$typename)";
-                }
-                if (enum_exists($type['typename']['string'])) {
-                    self::$enums[$type['typename']['string']] = true;
-                }
+                $typename = self::typeLink($type['typename']['string'], $type['isBuiltin']);
             }
             $desc = match (true) {
                 $propDocs['desc'] !== '' => $propDocs['desc'],
@@ -113,10 +109,10 @@ abstract class Markdown
                     $default instanceof \BackedEnum   => (string) $default->value,
                     $default instanceof \UnitEnum     => $default->name,
                     $default instanceof ImmutableBase => $default::class,
-                    is_callable($default)             => '(dynamic)',
+                    $default instanceof \Closure      => '(dynamic)',
+                    \is_object($default)              => get_debug_type($default),
                     \is_array($default)               => json_encode($default),
-                    $default === null                 => 'null',
-                    $default === false                => 'false',
+                    \is_bool($default)                => $default ? 'true' : 'false',
                     default                           => (string) $default
                 };
             }
@@ -160,19 +156,28 @@ abstract class Markdown
      */
     final protected static function unionTypeNamesParser(array $type): string
     {
-        $typename = $type['typename']['string'];
-        if (!$type['isBuiltin']) {
-            $shortname = explode('\\', $typename);
-            $shortname = end($shortname);
-
-            if (enum_exists($typename)) {
-                self::$enums[$typename] = true;
-            }
-
-            return "[$shortname](#$typename)";
+        return self::typeLink($type['typename']['string'], $type['isBuiltin']);
+    }
+    /**
+     * Formats a single type name for Markdown output: non-builtin types as
+     * an internal anchor link (and enums queued for their own block),
+     * builtin types as plain text.
+     *
+     * @param string $typename FQCN or builtin type name.
+     * @param bool $isBuiltin Whether $typename is a PHP builtin type.
+     * @return string
+     */
+    private static function typeLink(string $typename, bool $isBuiltin): string
+    {
+        if ($isBuiltin) {
+            return $typename;
         }
+        if (enum_exists($typename)) {
+            self::$enums[$typename] = true;
+        }
+        $shortname = explode('\\', $typename);
 
-        return $typename;
+        return '[' . end($shortname) . "](#$typename)";
     }
     /**
      * Generates Markdown documentation blocks for all Enum classes

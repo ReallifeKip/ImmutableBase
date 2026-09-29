@@ -60,10 +60,10 @@ abstract class Mermaid
      *
      * @param array<string, string> $props Property name => type string.
      * @param class-string $name Display name for the class node.
-     * @param string $stereotype DTO, VO, or SVO label (empty string if none).
+     * @param string|null $stereotype DTO, VO, or SVO label (null or empty string if none).
      * @return list<string>
      */
-    public static function contentBlocksGenerate(array $props, string $name, string $stereotype): array
+    public static function contentBlocksGenerate(array $props, string $name, ?string $stereotype): array
     {
         $content = ["        class {$name} {"];
         if ($stereotype) {
@@ -78,9 +78,12 @@ abstract class Mermaid
     }
 
     /**
-     * Produces Mermaid composition arrows for all non-builtin, non-union
-     * property types that reference another class in the class map.
-     * Includes cardinality notation ("0..1" for nullable, "1" otherwise).
+     * Produces Mermaid composition arrows for every property that references
+     * another class in the class map, labelled with the property name:
+     *   - #[ArrayOf] target → cardinality "*"
+     *   - union member     → cardinality "0..1" (each member is optional)
+     *   - named type       → "0..1" when nullable, "1" otherwise
+     * Builtin and enum targets have no node in the diagram and are skipped.
      *
      * @param array<string, Type> $types Property type metadata.
      * @param class-string $name Display name of the owning class.
@@ -91,19 +94,21 @@ abstract class Mermaid
     public static function addCompositionRelations(array $types, string $name, array $classMap, array $shortNameCount): array
     {
         foreach ($types as $type) {
-            if ($type['isBuiltin'] || $type['isUnion']) {
-                continue;
+            [$targets, $cardinality] = match (true) {
+                $type['arrayOf'] !== null => [$type['arrayOf'], '"*"'],
+                $type['isUnion']          => [$type['typename']['array'], '"0..1"'],
+                default                   => [[$type['typename']['string']], $type['allowsNull'] ? '"0..1"' : '"1"'],
+            };
+            foreach ($targets as $targetClass) {
+                if (!isset($classMap[$targetClass])) {
+                    continue;
+                }
+                $targetName = Writer::displayNameGenerator($targetClass, $classMap, $shortNameCount);
+                if ($targetName === $name) {
+                    continue;
+                }
+                $relations[] = "    {$name} --> {$cardinality} {$targetName} : {$type['propertyName']}";
             }
-            $targetClass = $type['typename']['string'];
-            if (!isset($classMap[$targetClass])) {
-                continue;
-            }
-            $targetName = Writer::displayNameGenerator($targetClass, $classMap, $shortNameCount);
-            if ($targetName === $name) {
-                continue;
-            }
-            $cardinality = $type['allowsNull'] ? '"0..1"' : '"1"';
-            $relations[] = "    {$name} --> {$cardinality} {$targetName} : " . ($type['typename']['short'] ?? '');
         }
 
         return $relations ?? [];

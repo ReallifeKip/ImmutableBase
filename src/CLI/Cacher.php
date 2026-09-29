@@ -154,9 +154,9 @@ class Cacher
             }
             [$type, $value] = $token;
             match (true) {
-                $type === T_NAMESPACE                                  => $gettingNamespace                              = true,
-                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON => $gettingClass = true,
-                default                                                => null
+                $type === T_NAMESPACE                                                              => $gettingNamespace = true,
+                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON && $prevTokenType !== T_NEW => $gettingClass     = true,
+                default                                                                            => null
             };
             if ($gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)) {
                 $namespace .= $value;

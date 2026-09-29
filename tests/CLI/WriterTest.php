@@ -280,16 +280,16 @@ class WriterTest extends TestCase
         $this->assertSame('unknown[]', $result);
     }
 
-    public function testParseUnreadableFileReturnsNull(): void
+    public function testParseUnreadableFileReturnsNoClasses(): void
     {
         $root = vfsStream::setup('testDir');
         $file = vfsStream::newFile('test.php', 0000)
             ->withContent('<?php class Foo {}')
             ->at($root);
 
-        $method = new \ReflectionMethod(Writer::class, 'parseFullClassName');
+        $method = new \ReflectionMethod(Writer::class, 'parseFullClassNames');
         $result = @$method->invoke(null, $file->url());
 
-        $this->assertNull($result);
+        $this->assertSame([], $result);
     }
 }

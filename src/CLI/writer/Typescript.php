@@ -81,7 +81,8 @@ abstract class Typescript
     }
 
     /**
-     * Collects enum types referenced by a property for later output.
+     * Collects enum types referenced by a property — directly, as a union
+     * member, or as an #[ArrayOf] element — for later output.
      * BackedEnums store case name => value pairs; UnitEnums store case names only.
      *
      * @param Type $type Property type metadata to inspect for enum references.
@@ -89,7 +90,7 @@ abstract class Typescript
      */
     private static function collectEnums(array $type): void
     {
-        foreach ($type['typename']['array'] as $t) {
+        foreach ([...$type['typename']['array'], ...($type['arrayOf'] ?? [])] as $t) {
             if (!enum_exists($t)) {
                 continue;
             }
@@ -118,7 +119,7 @@ abstract class Typescript
         if ($enum['isBacked']) {
             $lines[] = "    enum $name {";
             foreach ($enum['cases'] as $k => $v) {
-                $formatted = \is_int($v) ? $v : "'$v'";
+                $formatted = \is_int($v) ? $v : self::stringLiteral($v);
                 $lines[]   = "        $k = $formatted,";
             }
             $lines[] = '    }';
@@ -128,6 +129,26 @@ abstract class Typescript
         }
 
         return $lines;
+    }
+
+    /**
+     * Renders a PHP string as a single-quoted TypeScript string literal,
+     * escaping backslashes, quotes, line terminators and other control
+     * characters so any backed enum value produces valid source.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function stringLiteral(string $value): string
+    {
+        $escaped = strtr($value, ['\\' => '\\\\', "'" => "\\'", "\n" => '\\n', "\r" => '\\r', "\t" => '\\t']);
+        $escaped = preg_replace_callback(
+            '/[\x00-\x1F\x{2028}\x{2029}]/u',
+            static fn(array $m) => \sprintf('\\u%04x', mb_ord($m[0])),
+            $escaped
+        );
+
+        return "'$escaped'";
     }
 
     /**
@@ -167,8 +188,8 @@ abstract class Typescript
      *
      * SVOs are emitted as type aliases (scalar), DTO/VOs as interfaces,
      * and referenced enums as TS enums or union literal types.
-     * Within each namespace block, output order is: type aliases,
-     * interfaces, backed enums, then unit enum type aliases.
+     * Within each namespace block, output order is: interfaces, SVO type
+     * aliases, unit enum type aliases, then backed enums.
      *
      * @param ClassMap $classMap
      * @return list<string>

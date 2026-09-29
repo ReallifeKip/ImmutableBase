@@ -70,6 +70,7 @@ class Writer
         self::$scanDir   = getcwd();
         self::$outputDir = $outputDir;
         self::$docblock  = DocBlockFactory::createInstance();
+        Markdown::$enums = [];
         file_put_contents($outputDir, '', LOCK_EX);
         self::indexDirectory();
         $classMap = self::buildClassMap();
@@ -120,6 +121,7 @@ class Writer
                 $ref->isSubclassOf(self::$baseClasses[1]) => 'DTO',
                 $ref->isSubclassOf(self::$baseClasses[3]) => 'SVO',
                 $ref->isSubclassOf(self::$baseClasses[2]) => 'VO',
+                default                                   => null, // extends ImmutableBase directly
             };
         }
 
@@ -162,7 +164,7 @@ class Writer
 
         return match (self::$type) {
             'mmd'   => Mermaid::contentBlocksGenerate(
-                self::collectProperties($entry['ref']),
+                self::collectProperties($entry['ref'], $classMap),
                 self::displayNameGenerator($fullClass, $classMap, $shortNameCount),
                 self::$stereotypes[$fullClass] ?? null
             ),
@@ -240,17 +242,22 @@ class Writer
     }
 
     /**
-     * Extracts locally-declared property names and their type strings
-     * from a ReflectionClass. Skips inherited properties to avoid
-     * duplication in diagram output. Strips nullable '?' prefix.
+     * Extracts the property names and type strings to draw inside a class
+     * node. A property inherited from a class that has its own node (a
+     * concrete parent in the class map) is skipped, since the inheritance
+     * arrow already shows it. A property inherited from a class without a
+     * node (an abstract parent, or the framework bases) is drawn here, or it
+     * would appear nowhere in the diagram. Strips nullable '?' prefix.
      *
      * @param ReflectionClass $ref
+     * @param ClassMap $classMap
      * @return array<string, string> Property name => type string.
      */
-    private static function collectProperties(ReflectionClass $ref): array
+    private static function collectProperties(ReflectionClass $ref, array $classMap): array
     {
         foreach ($ref->getProperties() as $prop) {
-            if ($prop->getDeclaringClass()->getName() !== $ref->getName()) {
+            $declaring = $prop->getDeclaringClass()->getName();
+            if ($declaring !== $ref->getName() && isset($classMap[$declaring])) {
                 continue;
             }
             $type                    = $prop->getType();
@@ -274,11 +281,11 @@ class Writer
             if (!self::isEligibleFile($file)) {
                 continue;
             }
-            $class = self::parseFullClassName($file->getRealPath());
-            if (!self::isEligibleClass($class)) {
-                continue;
+            foreach (self::parseFullClassNames($file->getRealPath()) as $class) {
+                if (self::isEligibleClass($class)) {
+                    self::tryInstantiateClass($class);
+                }
             }
-            self::tryInstantiateClass($class);
         }
     }
 
@@ -338,22 +345,23 @@ class Writer
     }
 
     /**
-     * Extracts the fully-qualified class name from a PHP source file
-     * by tokenizing its contents. Handles both simple and qualified
-     * namespace declarations.
+     * Extracts the fully-qualified names of every class declared in a PHP
+     * source file by tokenizing its contents. Handles both simple and
+     * qualified namespace declarations. `Foo::class` and anonymous classes
+     * (`new class`) are not declarations and are skipped.
      *
      * @param string $path Absolute file path.
-     * @return class-string|null FQCN or null if no class declaration found.
+     * @return list<class-string> FQCNs in declaration order; empty if none or unreadable.
      */
-    private static function parseFullClassName(string $path): ?string
+    private static function parseFullClassNames(string $path): array
     {
         $content = file_get_contents($path);
         if ($content === false) {
-            return null;
+            return [];
         }
         $tokens           = token_get_all($content);
         $namespace        = [];
-        $class            = '';
+        $classes          = [];
         $gettingNamespace = false;
         $gettingClass     = false;
         $prevTokenType    = null;
@@ -366,24 +374,21 @@ class Writer
             }
             [$type, $value] = $token;
             match (true) {
-                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON                  => $gettingClass                 = true,
-                $type === T_NAMESPACE                                                   => $gettingNamespace                                              = true,
-                $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING) => $namespace[] = $value,
-                default                                                                 => null
+                $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON && $prevTokenType !== T_NEW => $gettingClass     = true,
+                $type === T_NAMESPACE                                                              => $gettingNamespace = true,
+                $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)            => $namespace[]      = $value,
+                default                                                                            => null
             };
             if ($gettingClass && $type === T_STRING) {
-                $class = $value;
-                break;
+                $classes[]    = ltrim(implode('', $namespace) . "\\$value", '\\');
+                $gettingClass = false;
             }
             match (true) {
                 $type !== T_WHITESPACE => $prevTokenType = $type,
                 default                => null
             };
         }
-        if (!$class) {
-            return null;
-        }
 
-        return ltrim(implode('', $namespace) . "\\$class", '\\');
+        return $classes;
     }
 }
