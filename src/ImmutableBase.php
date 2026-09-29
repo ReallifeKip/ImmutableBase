@@ -210,6 +210,8 @@ abstract readonly class ImmutableBase
                 );
             }
             foreach ($props['types'] as &$type) {
+                // with() decodes JSON only for a plain `array` target; see resolveValue()
+                $type['decodesJson'] = !$type['isUnion'] && $type['typename']['string'] === 'array' && $type['arrayOf'] === null;
                 // Coalesce defaults for cache-sourced metadata which omits runtime-only fields
                 $type['resolver'] = self::buildResolver(
                     $type,
@@ -252,20 +254,27 @@ abstract readonly class ImmutableBase
 
     /**
      * Central value resolution dispatcher. Handles four cases in priority order:
-     *   1. JSON-like string with $tryJson=true → parse and delegate to valueDecide()
+     *   1. $tryJson=true, a plain `array` target and a string that decodes to
+     *      an array → resolve the decoded array instead (with() only)
      *   2. Null → accept if nullable, otherwise throw RequiredValueException
      *   3. ArrayOf property → delegate to arrayOfInitialize()
      *   4. Everything else → invoke the pre-compiled resolver closure
      *
+     * Every other target already handles JSON in its own resolver where it is
+     * meaningful (nested objects, #[ArrayOf]) and must keep a JSON-looking
+     * string as-is where a string is valid (`string`, `mixed`, SVOs), so
+     * with() resolves those exactly as fromArray() does.
+     *
      * @param Type $type Compiled property type metadata from scanProperties().
      * @param mixed $value The raw input value to resolve against the declared type.
-     * @param bool $tryJson When true, speculatively parse JSON-like strings before type resolution.
+     * @param bool $tryJson When true, decode a JSON string for a plain `array` target.
      * @return mixed
      */
     final protected static function resolveValue(array $type, mixed $value, bool $tryJson = false): mixed
     {
         return match (true) {
-            $tryJson && self::jsonLike($value) => self::valueDecide($type, self::jsonParser($value)),
+            $tryJson && ($type['decodesJson'] ?? false) && self::jsonLike($value) && \is_array($decoded = self::jsonParser($value))
+                                               => $decoded,
             $value === null                    => $type['allowsNull'] ? null : throw new RequiredValueException($type['propertyName'] ?? $type['typename']['string']),
             ($arg = $type['arrayOf']) !== null => self::arrayOfInitialize($arg, $value),
             default                            => $type['resolver']($value)
