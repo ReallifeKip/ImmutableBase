@@ -70,10 +70,13 @@ abstract readonly class ImmutableBase
 {
     use BasicTrait;
     /**
-     * Wraps construction and mutation operations in a depth-tracked error boundary.
-     * Maintains a static depth counter to enable hierarchical error path tracking
-     * via prependPath() — nested constructions increment depth, and the outermost
-     * catch assembles the full property path chain (e.g. "OrderDTO.customer.email").
+     * Wraps construction and mutation operations in an error boundary that
+     * contributes one frame to the exception's error path via prependPath().
+     * Nested constructions each add their frame on the way out, so the
+     * outermost catch leaves the full chain (e.g. "OrderDTO > $customer > $email").
+     *
+     * No state is kept outside the exception itself, so an exception that
+     * never reaches the outermost frame cannot affect later messages.
      *
      * @param callable(string, ?string): mixed $callback Receives the FQCN of the calling class and a
      *                                                   by-reference error path variable for prependPath()
@@ -82,14 +85,9 @@ abstract readonly class ImmutableBase
     {
         $static    = static::class;
         $errorPath = null;
-        ImmutableBaseException::$depth++;
         try {
-            $result = $callback($static, $errorPath);
-            ImmutableBaseException::$depth--;
-
-            return $result;
+            return $callback($static, $errorPath);
         } catch (ImmutableBaseException $e) {
-            ImmutableBaseException::$depth--;
             throw $e->prependPath($static, $errorPath);
         }
     }
@@ -1340,8 +1338,8 @@ abstract readonly class ImmutableBase
         if ($this instanceof SingleValueObject) {
             return $data instanceof $static ? $data : $static::from($data);
         }
-        ImmutableBaseException::$depth++;
-        try {
+
+        return self::executeSafely(function ($static, &$errorPath) use ($data, $separator) {
             $s              = &self::state();
             $values         = get_object_vars($this);
             $props          = $s['properties'][$static];
@@ -1379,13 +1377,9 @@ abstract readonly class ImmutableBase
                     $cache
                 );
             }
-            ImmutableBaseException::$depth--;
 
             return $instance;
-        } catch (ImmutableBaseException $e) {
-            ImmutableBaseException::$depth--;
-            throw $e->prependPath($static, $errorPath ?? null);
-        }
+        });
     }
     /**
      * Declares default values for properties that should be populated
