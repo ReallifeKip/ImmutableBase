@@ -11,6 +11,7 @@ use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
 use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\Attributes\Strict;
@@ -22,9 +23,11 @@ use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTarg
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidProxyException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\ImmutableProxy;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Types;
@@ -264,6 +267,7 @@ final class Scanner
             'skipOnNull'          => $classSkipOnNull || $property->getAttributes(SkipOnNull::class) !== [],
             'keepOnNull'          => $property->getAttributes(KeepOnNull::class) !== [],
             'isUnion'             => !($type instanceof ReflectionNamedType),
+            'proxyTarget'         => self::resolveProxyTarget($property, $type, $target),
         ] + ($type instanceof ReflectionNamedType ? self::scanNamedType($type) : self::scanUnionType($type));
     }
 
@@ -324,6 +328,48 @@ final class Scanner
     }
 
     /**
+     * Determines the class an ImmutableProxy property holds: the typed
+     * subclass's get() return type, else the #[Proxy] argument. Returns null
+     * for any property that is not an ImmutableProxy.
+     *
+     * @param ReflectionProperty $property The property being scanned.
+     * @param ReflectionNamedType|ReflectionUnionType $type Its declared type.
+     * @param string $where Human-readable property location for messages.
+     * @throws InvalidProxyException When the held class is missing, unknown or contradictory, or #[Proxy] is misplaced.
+     * @return class-string|null
+     */
+    private static function resolveProxyTarget(ReflectionProperty $property, ReflectionNamedType | ReflectionUnionType $type, string $where): ?string
+    {
+        $hasAttribute = $property->getAttributes(Proxy::class) !== [];
+        $proxyClass   = $type instanceof ReflectionNamedType && !$type->isBuiltin() && is_a($type->getName(), ImmutableProxy::class, true)
+        ? $type->getName()
+        : null;
+        if ($proxyClass === null) {
+            if ($hasAttribute) {
+                throw new InvalidProxyException("#[Proxy] on $where only applies to ImmutableProxy properties.");
+            }
+
+            return null;
+        }
+        $named = null;
+        if ($hasAttribute) {
+            $named = self::getAttributeArgument($property, Proxy::class);
+            if (!\is_string($named) || !(class_exists($named) || interface_exists($named))) {
+                throw new InvalidProxyException("#[Proxy] on $where names a class that does not exist: " . var_export($named, true) . '.');
+            }
+            $named = ltrim($named, '\\');
+        }
+        $declared = $proxyClass::declaredTarget();
+        if ($declared !== null && $named !== null && $named !== $declared) {
+            throw new InvalidProxyException("#[Proxy($named)] on $where contradicts $proxyClass::get(), which returns $declared.");
+        }
+
+        return $declared ?? $named ?? throw new InvalidProxyException(
+            "$where must declare its target class: type it as an ImmutableProxy subclass whose get() returns that class, or add #[Proxy(SomeClass::class)]."
+        );
+    }
+
+    /**
      * Scans a single named type, enforcing the forbidden type rule:
      * `object`, `iterable`, non-ImmutableBase classes, and non-enum classes are rejected at
      * definition time via InvalidPropertyTypeException. Standalone `null` passes through
@@ -342,8 +388,12 @@ final class Scanner
         $typename  = $refType->getName();
         $isBuiltin = $refType->isBuiltin();
         $isEnum    = !$isBuiltin && enum_exists($typename);
-        if ($typename === 'object' || $typename === 'iterable' || (!$isBuiltin && !is_a($typename, ImmutableBase::class, true) && !$isEnum)) {
+        $isProxy   = !$isBuiltin && is_a($typename, ImmutableProxy::class, true);
+        if ($typename === 'object' || $typename === 'iterable' || (!$isBuiltin && !is_a($typename, ImmutableBase::class, true) && !$isEnum && !$isProxy)) {
             throw new InvalidPropertyTypeException($typename);
+        }
+        if ($isProxy && $fromUnion) {
+            throw new InvalidProxyException("$typename cannot be a union member yet; declare the ImmutableProxy property on its own (nullable is fine).");
         }
         $result = [
             'typename'  => [

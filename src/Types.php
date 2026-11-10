@@ -33,6 +33,7 @@ use ReflectionType;
  *     skipOnNull: bool,
  *     keepOnNull: bool,
  *     isUnion: bool,
+ *     proxyTarget: class-string|null,
  *     resolver: callable(mixed): mixed
  *   }
  * @phpstan-type NamedTypeFromUnion BaseType & array{

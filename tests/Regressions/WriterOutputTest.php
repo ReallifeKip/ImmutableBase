@@ -100,6 +100,13 @@ class WriterOutputTest extends TestCase
         $this->assertStringContainsString('unionWithNull?: Tests.Regressions.Objects.Writer.DocItem | Tests.Regressions.Objects.Writer.DocEmail', $sparse);
     }
 
+    public function testTypescriptTypesProxiesAsUnknown(): void
+    {
+        $block = self::block($this->generate('ts'), 'interface ApiClientDTO {');
+        $this->assertStringContainsString('config: unknown', $block);
+        $this->assertStringContainsString('opaque: unknown | null', $block);
+    }
+
     // ─── Mermaid ─────────────────────────────────────────────
 
     public function testMermaidShowsPropertiesInheritedFromAbstractParent(): void
@@ -146,6 +153,13 @@ class WriterOutputTest extends TestCase
         $this->assertNotSame([], Markdown::$enums);
         Markdown::namespaceBlocksGenerate([], [], []);
         $this->assertSame([], Markdown::enumBlocksGenerate());
+    }
+
+    public function testMarkdownNamesTheHeldClassOfAProxy(): void
+    {
+        $md = $this->generate('md');
+        $this->assertStringContainsString('| config | yes | VendorConfigProxy (VendorConfig) |', $md);
+        $this->assertStringContainsString('| opaque |  | ImmutableProxy (OpaqueThing) |', $md);
     }
 
     // ─── Discovery ───────────────────────────────────────────

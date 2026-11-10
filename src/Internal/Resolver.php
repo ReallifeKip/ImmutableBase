@@ -15,6 +15,7 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueE
 use ReallifeKip\ImmutableBase\Exceptions\RuntimeException as InputRejectedException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\InvalidArrayOfItemException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\ImmutableProxy;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use ReallifeKip\ImmutableBase\Types;
 use ReflectionEnum;
@@ -64,7 +65,11 @@ final class Resolver
         $type['isSVO']     ??= false;
         // with() decodes JSON only for a plain `array` target; see value()
         $type['decodesJson'] = !$type['isUnion'] && $type['typename']['string'] === 'array' && $type['arrayOf'] === null;
-        $type['resolver']    = $type['isUnion'] ? self::unionResolver($type) : self::namedResolver($type['typename']['string']);
+        $type['resolver']    = match (true) {
+            isset($type['proxyTarget']) => self::proxyResolver($type['typename']['string'], $type['proxyTarget']),
+            $type['isUnion']            => self::unionResolver($type),
+            default                     => self::namedResolver($type['typename']['string']),
+        };
 
         return $type;
     }
@@ -200,6 +205,24 @@ final class Resolver
         }
 
         return self::matcher($typename, true, true);
+    }
+
+    /**
+     * The resolver for an ImmutableProxy property: an existing proxy holding
+     * the right class is kept; an instance of the held class is wrapped with
+     * $proxy::of(), which snapshots it; anything else is rejected, naming the
+     * held class since that is what callers pass.
+     *
+     * @param class-string<ImmutableProxy> $proxy The declared proxy class.
+     * @param class-string $target The class the proxy holds.
+     */
+    private static function proxyResolver(string $proxy, string $target): Closure
+    {
+        return static fn(mixed $value): mixed => match (true) {
+            $value instanceof $proxy && is_a($value->class, $target, true) => $value,
+            $value instanceof $target                                      => $proxy::of($value),
+            default                                                        => throw new InvalidValueException($target, $value),
+        };
     }
 
     /**

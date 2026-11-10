@@ -91,6 +91,8 @@ abstract class Markdown
                 /** @var UnionType $type */
                 $typeNames = array_map(self::unionTypeNamesParser(...), $type['types']);
                 $typename  = join('<br>', $typeNames);
+            } elseif (isset($type['proxyTarget'])) {
+                $typename = self::shortName($type['typename']['string']) . ' (' . self::shortName($type['proxyTarget']) . ')';
             } elseif ($type['arrayOf'] !== null) {
                 $elements = array_map(static fn(string $t) => self::typeLink($t, !class_exists($t)), $type['arrayOf']);
                 $typename = \count($elements) === 1 ? "{$elements[0]}[]" : '(' . implode(', ', $elements) . ')[]';
@@ -159,6 +161,18 @@ abstract class Markdown
         return self::typeLink($type['typename']['string'], $type['isBuiltin']);
     }
     /**
+     * The unqualified name of a class, for display.
+     *
+     * @param string $class FQCN.
+     * @return string
+     */
+    private static function shortName(string $class): string
+    {
+        $parts = explode('\\', $class);
+
+        return end($parts);
+    }
+    /**
      * Formats a single type name for Markdown output: non-builtin types as
      * an internal anchor link (and enums queued for their own block),
      * builtin types as plain text.
@@ -175,9 +189,8 @@ abstract class Markdown
         if (enum_exists($typename)) {
             self::$enums[$typename] = true;
         }
-        $shortname = explode('\\', $typename);
 
-        return '[' . end($shortname) . "](#$typename)";
+        return '[' . self::shortName($typename) . "](#$typename)";
     }
     /**
      * Generates Markdown documentation blocks for all Enum classes

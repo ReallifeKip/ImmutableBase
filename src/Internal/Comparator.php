@@ -6,6 +6,7 @@ namespace ReallifeKip\ImmutableBase\Internal;
 
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidCompareTargetException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\ImmutableProxy;
 use ReallifeKip\ImmutableBase\Objects\SingleValueObject;
 use UnitEnum;
 
@@ -65,6 +66,7 @@ final class Comparator
      *   - Array → both arrays and recursively equal (a shape mismatch is inequality)
      *   - ImmutableBase object → same class and equals()
      *   - Enum → identity (cases are singletons)
+     *   - ImmutableProxy → same proxy class and identical snapshots
      *   - Scalar / null → strict identity (===)
      *
      * Non-ImmutableBase objects (only reachable through `mixed` or plain
@@ -79,6 +81,7 @@ final class Comparator
             \is_array($a)               => \is_array($b) && self::arrayEquals($a, $b),
             $a instanceof ImmutableBase => $b instanceof ImmutableBase && $a::class === $b::class && $a->equals($b),
             $a instanceof UnitEnum      => $a === $b,
+            $a instanceof ImmutableProxy => $b instanceof ImmutableProxy && $a->equals($b),
             \is_object($a)              => throw new InvalidCompareTargetException(get_debug_type($a)),
             default                     => $a === $b,
         };

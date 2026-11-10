@@ -67,6 +67,9 @@ abstract class Typescript
      */
     private static function resolvePropertyType(array $type): string
     {
+        if (isset($type['proxyTarget'])) {
+            return 'unknown'; // the held object's JSON shape is not statically known
+        }
         if ($type['isUnion']) {
             $members = [];
             foreach ($type['types'] as $subType) {
