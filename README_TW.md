@@ -777,19 +777,19 @@ UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Ki
 
 ## ImmutableProxy - 存放非 ImmutableBase 物件
 
-屬性型別僅限 ImmutableBase 子類、Enum 與內建型別，因為 ImmutableBase 無法擔保其他類別的不可變性。`ImmutableProxy` 解除了這個限制：它可以存放**任何物件——不論是否可變、來自哪個套件**——而持有它的物件依然不可變。
+屬性型別僅限 ImmutableBase 子類、Enum 與內建型別，因為 ImmutableBase 無法擔保其他類別的不可變性。`ImmutableProxy` 解除了這個限制：它可以存放**任何物件——不論是否可變、來自哪個套件**——持有它的物件依然不可變，而且用起來就像物件本身。
 
-Proxy 從不保存物件本身，只保存它序列化後的快照。每次 `get()` 都會重建一份全新的深層複本，因此無論修改複本，或在交出後修改原物件，都不會影響持有者。
+Proxy 從不保存物件，只保存它序列化後的快照。讀取會轉發到由快照重建的全新深層複本，因此無論是原物件（交出後被修改）或任何複本，都無法影響持有者——`toArray()` / `toJson()` 的輸出也一樣。
 
-**具型別子類（推薦）**——`get()` 的原生回傳型別標明了存放的類別，任何 IDE 都能完整提示：
+**宣告**——具型別子類同時為 ImmutableBase（`#[Proxy]`）與 IDE（`@mixin`）標明存放的類別，可在所有 DTO / VO 中重複使用：
 
 ```php
+use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\ImmutableProxy;
 
-final readonly class VendorConfigProxy extends ImmutableProxy
-{
-    public function get(): VendorConfig { return parent::get(); }
-}
+/** @mixin VendorConfig */
+#[Proxy(VendorConfig::class)]
+final readonly class VendorConfigProxy extends ImmutableProxy {}
 
 readonly class ApiClient extends DataTransferObject
 {
@@ -797,38 +797,38 @@ readonly class ApiClient extends DataTransferObject
 }
 ```
 
-每個被存放的類別只需一個子類，可在所有 DTO / VO 中重複使用。
+也可以不寫子類，直接在型別為基底類別的屬性上加 `#[Proxy]`（`#[Proxy(VendorConfig::class)] public ImmutableProxy $config;`）；此時 IDE 提示取決於工具是否理解 `@var ImmutableProxy<VendorConfig>`。
 
-**基底類別搭配 `#[Proxy]`**——不需子類，但 IDE 提示取決於工具是否理解 `@template` 泛型：
+> `@mixin` 僅供 IDE 使用。ImmutableBase 執行時從不讀取註解（在 `opcache.save_comments=0` 下註解會消失），因此存放的類別也要寫在 `#[Proxy]` 中。
 
-```php
-use ReallifeKip\ImmutableBase\Attributes\Proxy;
-
-readonly class ApiClient extends DataTransferObject
-{
-    /** @var ImmutableProxy<VendorConfig> */
-    #[Proxy(VendorConfig::class)]
-    public ImmutableProxy $config;
-}
-```
-
-**使用方式**
+**使用**
 
 ```php
+use ReallifeKip\ImmutableBase\Proxies;
+
 $client = ApiClient::fromArray(['config' => $vendorConfig]); // 自動包裝
 
-$cfg = $client->config->get();   // 真正的 VendorConfig：全新的深層複本
-$cfg->setTimeout(5);             // 只改到複本，$client 不受影響
+$client->config->timeout;        // 讀取屬性，轉發
+$client->config->describe();     // 呼叫方法，轉發
+(string) $client->config;        // __toString，轉發
 
-$client->with(['config' => $cfg]);   // 替換存放的物件
-$client->toArray();                  // ['config' => $vendorConfig->jsonSerialize()]
-$client->equals($other);             // 比對快照
+$client->config->setTimeout(5);  // ImmutableViolationException：會修改存放的物件
+$client->config->timeout = 5;    // ImmutableViolationException
+
+$cfg = Proxies::unwrap($client->config);   // 真正的 VendorConfig（全新的深層複本）
+$http = new VendorHttpClient($cfg);        // 用於型別為存放類別的參數
+$client = $client->with(['config' => $cfg->setTimeout(5)]);   // 要修改：整個替換
 ```
+
+Proxy 自身的成員全部是 private，因此所有 public 名稱都屬於存放的物件：`$proxy->get('key')` 呼叫的是存放物件的 `get()`。
 
 | | 行為 |
 |---|---|
 | 接受的輸入 | 存放類別的實例（自動包裝），或已存放該類別的 Proxy |
-| `get()` | 每次呼叫都是新的深層複本：讀一次存入變數即可 |
+| 讀取屬性、呼叫方法、`(string)`、`$proxy(...)` | 轉發到全新的深層複本 |
+| 指定 / unset 屬性 | `ImmutableViolationException` |
+| 會修改物件的方法呼叫 | `ImmutableViolationException`（呼叫後比對複本與快照） |
+| `Proxies::unwrap($proxy)` | 真正的實例，可自由使用與修改；持有者不受影響 |
 | `toArray()` / `toJson()` | 存放物件的 `JsonSerializable` 形式；否則拋出 `InvalidSerializeTargetException` |
 | `equals()` | 相同的 Proxy 類別且快照相同 |
 | `with()` | 整個替換；深層路徑（`config.timeout`）會拋出 `InvalidWithPathException` |
@@ -836,10 +836,13 @@ $client->equals($other);             // 比對快照
 
 **限制**
 
+- 每次轉發存取都會重建物件（小物件約一微秒）。連續大量讀取時，先 `unwrap()` 一次再讀取複本。
+- Proxy 不是存放類別的實例：型別化參數、`instanceof`、`ArrayAccess`、迭代與 `count()` 請使用 `unwrap()`。
+- 巢狀寫入（`$proxy->endpoint->url = 'x'`）落在用完即丟的複本上：持有者安全，但不會拋出例外。
+- 第一次呼叫時把結果快取在物件內部的方法會被視為寫入而拒絕；請 `unwrap()` 後在複本上呼叫。
 - 存放的物件必須可序列化：內部任何地方含有 `Closure`、resource 或匿名類別，都會拋出 `UnserializableValueException`。
-- 尚不支援作為 union 成員或 `#[ArrayOf]` 元素。
-- `fromArray($x->toArray())` 無法重建 Proxy 屬性：它序列化後的形式是物件的 JSON，Proxy 無法將其還原為物件。
-- 不保留物件身分（`get() !== get()`）；序列化內容不同的兩個物件（快取、延遲初始化欄位）會被視為不相等。
+- 尚不支援作為 union 成員或 `#[ArrayOf]` 元素；`fromArray($x->toArray())` 無法重建 Proxy 屬性。
+- 若存放類別的 `jsonSerialize()` / `__toString()` 讀取全域設定（語系、全域格式），即使快照不變，輸出也會隨這些設定改變。
 
 ---
 
@@ -931,7 +934,7 @@ vendor/bin/ib-writer --format=ts --output=docs
 
 `InvalidSerializeTargetException` - `toArray()` / `toJson()` 遇到未實作 `JsonSerializable` 的非 ImmutableBase 物件（存放於 `mixed`、一般 `array` 屬性或 `ImmutableProxy` 中）。
 
-`InvalidProxyException` - `ImmutableProxy` 屬性無法確定存放的類別（基底類別未加 `#[Proxy]`、`#[Proxy]` 指向不存在的類別或與子類 `get()` 的回傳型別矛盾）、`#[Proxy]` 用在非 Proxy 屬性上，或 Proxy 被用作 union 成員。
+`InvalidProxyException` - `ImmutableProxy` 屬性無法確定存放的類別（屬性及其子類皆未加 `#[Proxy]`、`#[Proxy]` 指向不存在的類別，或屬性的 `#[Proxy]` 與子類的矛盾）、`#[Proxy]` 用在非 Proxy 屬性上，或 Proxy 被用作 union 成員。
 
 `InvalidWithPathException` - `with()` 的深層路徑指向純量屬性，無法向下展開。
 
@@ -962,6 +965,8 @@ vendor/bin/ib-writer --format=ts --output=docs
 `StrictViolationException` - 嚴格模式下，輸入資料包含未宣告為屬性的 key。
 
 `InvalidArrayOfItemException` - `#[ArrayOf]` 陣列中的某個元素無法解析為目標類的實例。
+
+`ImmutableViolationException` - 程式碼試圖修改 `ImmutableProxy` 存放的物件：指定或 unset 其屬性，或呼叫會修改它的方法。
 
 ---
 

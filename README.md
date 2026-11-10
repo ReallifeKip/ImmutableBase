@@ -777,19 +777,19 @@ Available `KeyCase` values:
 
 ## ImmutableProxy - Holding Non-ImmutableBase Objects
 
-Properties are limited to ImmutableBase classes, enums and builtins, because ImmutableBase cannot vouch for the immutability of anyone else's class. `ImmutableProxy` lifts that limit: it holds **any object — mutable or not, from any package —** while the owning object stays immutable.
+Properties are limited to ImmutableBase classes, enums and builtins, because ImmutableBase cannot vouch for the immutability of anyone else's class. `ImmutableProxy` lifts that limit: it holds **any object — mutable or not, from any package —** while the owning object stays immutable, and reads as if it were the object itself.
 
-The proxy never stores the object itself, only a serialized snapshot of it. Every `get()` rebuilds a fresh deep copy, so neither mutating a copy nor mutating the original after it was handed over can reach the owner.
+The proxy never stores the object, only a serialized snapshot of it. Reads are forwarded to a fresh deep copy rebuilt from that snapshot, so neither the original object (mutated after it was handed over) nor any copy can reach the owner — including what `toArray()` / `toJson()` output.
 
-**Typed subclass (recommended)** — `get()`'s native return type names the held class and gives every IDE full completion:
+**Declaring** — a typed subclass names the held class once for ImmutableBase (`#[Proxy]`) and once for the IDE (`@mixin`), and can be reused by every DTO / VO:
 
 ```php
+use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\ImmutableProxy;
 
-final readonly class VendorConfigProxy extends ImmutableProxy
-{
-    public function get(): VendorConfig { return parent::get(); }
-}
+/** @mixin VendorConfig */
+#[Proxy(VendorConfig::class)]
+final readonly class VendorConfigProxy extends ImmutableProxy {}
 
 readonly class ApiClient extends DataTransferObject
 {
@@ -797,38 +797,38 @@ readonly class ApiClient extends DataTransferObject
 }
 ```
 
-One subclass per held class, reusable across every DTO / VO.
+Or, without a subclass, put `#[Proxy]` on a property typed as the base class (`#[Proxy(VendorConfig::class)] public ImmutableProxy $config;`); IDE completion then depends on your tooling understanding `@var ImmutableProxy<VendorConfig>`.
 
-**Base class with `#[Proxy]`** — no subclass; completion then depends on your tooling understanding `@template` generics:
+> `@mixin` is for the IDE only. ImmutableBase never reads doc comments at runtime (they disappear under `opcache.save_comments=0`), which is why the held class is also given in `#[Proxy]`.
 
-```php
-use ReallifeKip\ImmutableBase\Attributes\Proxy;
-
-readonly class ApiClient extends DataTransferObject
-{
-    /** @var ImmutableProxy<VendorConfig> */
-    #[Proxy(VendorConfig::class)]
-    public ImmutableProxy $config;
-}
-```
-
-**Usage**
+**Using**
 
 ```php
+use ReallifeKip\ImmutableBase\Proxies;
+
 $client = ApiClient::fromArray(['config' => $vendorConfig]); // wrapped automatically
 
-$cfg = $client->config->get();   // a real VendorConfig: a fresh deep copy
-$cfg->setTimeout(5);             // changes the copy only; $client is unaffected
+$client->config->timeout;        // property read, forwarded
+$client->config->describe();     // method call, forwarded
+(string) $client->config;        // __toString, forwarded
 
-$client->with(['config' => $cfg]);   // replace the held object
-$client->toArray();                  // ['config' => $vendorConfig->jsonSerialize()]
-$client->equals($other);             // compares snapshots
+$client->config->setTimeout(5);  // ImmutableViolationException: it would modify the held object
+$client->config->timeout = 5;    // ImmutableViolationException
+
+$cfg = Proxies::unwrap($client->config);   // a real VendorConfig (fresh deep copy)
+$http = new VendorHttpClient($cfg);        // for parameters typed as the held class
+$client = $client->with(['config' => $cfg->setTimeout(5)]);   // to change it: replace it
 ```
+
+The proxy's own members are all private, so every public name belongs to the held object: `$proxy->get('key')` calls the held object's `get()`.
 
 | | Behaviour |
 |---|---|
 | Accepted input | An instance of the held class (wrapped), or a proxy already holding it |
-| `get()` | A new deep copy on every call: read it once into a variable |
+| Property reads, method calls, `(string)`, `$proxy(...)` | Forwarded to a fresh deep copy |
+| Assigning / unsetting a property | `ImmutableViolationException` |
+| A method call that changes the object | `ImmutableViolationException` (the copy is compared with the snapshot after the call) |
+| `Proxies::unwrap($proxy)` | A real instance, free to use and modify; the holder is unaffected |
 | `toArray()` / `toJson()` | The held object's `JsonSerializable` form; `InvalidSerializeTargetException` otherwise |
 | `equals()` | Same proxy class and identical snapshots |
 | `with()` | Replace the whole object; deep paths into it (`config.timeout`) throw `InvalidWithPathException` |
@@ -836,10 +836,13 @@ $client->equals($other);             // compares snapshots
 
 **Limits**
 
+- Every forwarded access rebuilds the object (roughly a microsecond for a small one). For many reads in a row, `unwrap()` once and read the copy.
+- The proxy is not an instance of the held class: use `unwrap()` for typed parameters, `instanceof`, `ArrayAccess`, iteration and `count()`.
+- A nested write (`$proxy->endpoint->url = 'x'`) lands on a throwaway copy: the holder is safe, but nothing is raised.
+- A method that caches its result inside the object on first call is seen as a write and refused; `unwrap()` and call it on the copy.
 - The held object must be serializable: a `Closure`, a resource or an anonymous class anywhere inside it throws `UnserializableValueException`.
-- Not yet supported as a union member or an `#[ArrayOf]` element.
-- `fromArray($x->toArray())` does not rebuild a proxied property: its serialized form is the object's JSON, which the proxy cannot turn back into an object.
-- Object identity is not preserved (`get() !== get()`), and two objects whose serialized internals differ (caches, lazy fields) compare unequal.
+- Not yet supported as a union member or an `#[ArrayOf]` element; `fromArray($x->toArray())` does not rebuild a proxied property.
+- If the held class's `jsonSerialize()` / `__toString()` read global settings (locale, a global format), their output follows those settings even though the snapshot does not change.
 
 ---
 
@@ -931,7 +934,7 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 
 `InvalidSerializeTargetException` - `toArray()` / `toJson()` met a non-ImmutableBase object (held by a `mixed` or plain `array` property, or an `ImmutableProxy`) that does not implement `JsonSerializable`.
 
-`InvalidProxyException` - An `ImmutableProxy` property does not determine its held class (base class without `#[Proxy]`, `#[Proxy]` naming a missing class or contradicting the subclass's `get()`), `#[Proxy]` is used on a non-proxy property, or a proxy is used as a union member.
+`InvalidProxyException` - An `ImmutableProxy` property does not determine its held class (no `#[Proxy]` on the property or its subclass, a `#[Proxy]` naming a missing class, or the property's `#[Proxy]` contradicting the subclass's), `#[Proxy]` is used on a non-proxy property, or a proxy is used as a union member.
 
 `InvalidWithPathException` - A `with()` deep path targets a scalar property that cannot be traversed further.
 
@@ -962,6 +965,8 @@ Thrown on domain validation failure or structural constraint violation.
 `StrictViolationException` - Under strict mode, input data contains keys not declared as properties.
 
 `InvalidArrayOfItemException` - An element in an `#[ArrayOf]` array cannot be resolved as an instance of the target class.
+
+`ImmutableViolationException` - Code tried to change an object held by an `ImmutableProxy`: assigning or unsetting one of its properties, or calling a method that modifies it.
 
 ---
 
