@@ -5,17 +5,18 @@ declare (strict_types = 1);
 namespace ReallifeKip\ImmutableBase\Attributes;
 
 /**
- * Names the class an ImmutableProxy holds. On a typed subclass (recommended,
- * paired with @mixin for the IDE):
+ * Names the class an ImmutableProxy holds, for ImmutableBase at runtime. On
+ * a property typed as the ImmutableProxy base class (pair it with a doc
+ * comment for the IDE, which does not read attributes):
  *
- *     /** @mixin VendorConfig *\/
- *     #[Proxy(VendorConfig::class)]
- *     final readonly class VendorConfigProxy extends ImmutableProxy {}
- *
- * or on a property typed as the ImmutableProxy base class:
- *
+ *     /** @var ImmutableProxy&VendorConfig *\/
  *     #[Proxy(VendorConfig::class)]
  *     public ImmutableProxy $config;
+ *
+ * or on a typed subclass, shared by every property typed with it:
+ *
+ *     #[Proxy(VendorConfig::class)]
+ *     final readonly class VendorConfigProxy extends ImmutableProxy {}
  *
  * When both the subclass and the property carry one, they must agree.
  *

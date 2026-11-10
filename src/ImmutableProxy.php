@@ -35,19 +35,23 @@ use Throwable;
  * get(). Proxies::unwrap() returns a real instance when one is needed, e.g.
  * for a parameter typed as the held class.
  *
- * Declare a typed subclass, naming the held class for ImmutableBase
- * (#[Proxy]) and for the IDE (@mixin):
+ * Declare the held class twice: #[Proxy] for ImmutableBase (read at
+ * runtime) and a doc comment for the IDE (attributes carry no type
+ * information for it, and ImmutableBase never reads doc comments):
  *
- *     /** @mixin VendorConfig *\/
+ *     /** @var ImmutableProxy&VendorConfig *\/
  *     #[Proxy(VendorConfig::class)]
- *     final readonly class VendorConfigProxy extends ImmutableProxy {}
+ *     public ImmutableProxy $config;
  *
- *     public VendorConfigProxy $config;
- *
- * or use the base class with #[Proxy] on the property. ImmutableBase wraps
- * a given instance automatically.
+ * The intersection gives completion even in the free tier of Intelephense
+ * (where @mixin is a premium feature). Tools that resolve @mixin on generic
+ * templates (PHPStan, Intelephense premium) also accept
+ * `@var ImmutableProxy<VendorConfig>`. A typed subclass carrying the class-level #[Proxy] lets several
+ * properties share one declaration. ImmutableBase wraps a given instance
+ * automatically.
  *
  * @template T of object
+ * @mixin T
  */
 readonly class ImmutableProxy implements JsonSerializable
 {

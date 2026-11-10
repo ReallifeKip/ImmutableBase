@@ -781,25 +781,31 @@ UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Ki
 
 Proxy 從不保存物件，只保存它序列化後的快照。讀取會轉發到由快照重建的全新深層複本，因此無論是原物件（交出後被修改）或任何複本，都無法影響持有者——`toArray()` / `toJson()` 的輸出也一樣。
 
-**宣告**——具型別子類同時為 ImmutableBase（`#[Proxy]`）與 IDE（`@mixin`）標明存放的類別，可在所有 DTO / VO 中重複使用：
+**宣告**——存放的類別要標明兩次：`#[Proxy]` 給 ImmutableBase，註解給 IDE：
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\ImmutableProxy;
 
-/** @mixin VendorConfig */
-#[Proxy(VendorConfig::class)]
-final readonly class VendorConfigProxy extends ImmutableProxy {}
-
 readonly class ApiClient extends DataTransferObject
 {
-    public VendorConfigProxy $config;
+    /** @var ImmutableProxy&VendorConfig */    // 給 IDE：提示 VendorConfig 的成員
+    #[Proxy(VendorConfig::class)]              // 給 ImmutableBase：執行時檢查的類別
+    public ImmutableProxy $config;
 }
 ```
 
-也可以不寫子類，直接在型別為基底類別的屬性上加 `#[Proxy]`（`#[Proxy(VendorConfig::class)] public ImmutableProxy $config;`）；此時 IDE 提示取決於工具是否理解 `@var ImmutableProxy<VendorConfig>`。
+> IDE 不會從 attribute 讀取型別，而 ImmutableBase 執行時從不讀取註解（在 `opcache.save_comments=0` 下註解會消失），因此兩者各需一份宣告。交集型別在免費版 Intelephense 中有效（已以 1.18 驗證），而 `@mixin` 在 Intelephense 是付費版功能；PHPStan 與 PhpStorm 同樣能讀取註解中的交集型別。能解析泛型 `@mixin` 的工具（PHPStan、Intelephense 付費版）也接受 `@var ImmutableProxy<VendorConfig>`。交集型別也會讓靜態分析工具認為 Proxy *就是* `VendorConfig`，但執行時並不是，因此傳給型別為存放類別的參數時，請使用 `Proxies::unwrap($client->config)`。
 
-> `@mixin` 僅供 IDE 使用。ImmutableBase 執行時從不讀取註解（在 `opcache.save_comments=0` 下註解會消失），因此存放的類別也要寫在 `#[Proxy]` 中。
+若要讓多個屬性共用同一份宣告，可改把 `#[Proxy]` 放在子類上：
+
+```php
+#[Proxy(VendorConfig::class)]
+final readonly class VendorConfigProxy extends ImmutableProxy {}
+
+/** @var VendorConfigProxy&VendorConfig */
+public VendorConfigProxy $config;
+```
 
 **使用**
 

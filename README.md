@@ -781,25 +781,31 @@ Properties are limited to ImmutableBase classes, enums and builtins, because Imm
 
 The proxy never stores the object, only a serialized snapshot of it. Reads are forwarded to a fresh deep copy rebuilt from that snapshot, so neither the original object (mutated after it was handed over) nor any copy can reach the owner — including what `toArray()` / `toJson()` output.
 
-**Declaring** — a typed subclass names the held class once for ImmutableBase (`#[Proxy]`) and once for the IDE (`@mixin`), and can be reused by every DTO / VO:
+**Declaring** — name the held class twice: `#[Proxy]` for ImmutableBase, and a doc comment for the IDE:
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\ImmutableProxy;
 
-/** @mixin VendorConfig */
-#[Proxy(VendorConfig::class)]
-final readonly class VendorConfigProxy extends ImmutableProxy {}
-
 readonly class ApiClient extends DataTransferObject
 {
-    public VendorConfigProxy $config;
+    /** @var ImmutableProxy&VendorConfig */    // for the IDE: completion of VendorConfig members
+    #[Proxy(VendorConfig::class)]              // for ImmutableBase: the class checked at runtime
+    public ImmutableProxy $config;
 }
 ```
 
-Or, without a subclass, put `#[Proxy]` on a property typed as the base class (`#[Proxy(VendorConfig::class)] public ImmutableProxy $config;`); IDE completion then depends on your tooling understanding `@var ImmutableProxy<VendorConfig>`.
+> IDEs do not read attributes for types, and ImmutableBase never reads doc comments at runtime (they disappear under `opcache.save_comments=0`), so each needs its own declaration. The intersection type works with the free tier of Intelephense (verified with 1.18), where `@mixin` is a premium feature; PHPStan and PhpStorm read intersection types in doc comments too. Tools that resolve `@mixin` on generic templates (PHPStan; Intelephense premium) also accept `@var ImmutableProxy<VendorConfig>`. The intersection also convinces static analysers that the proxy *is* a `VendorConfig`; it is not at runtime, so pass `Proxies::unwrap($client->config)` to parameters typed as the held class.
 
-> `@mixin` is for the IDE only. ImmutableBase never reads doc comments at runtime (they disappear under `opcache.save_comments=0`), which is why the held class is also given in `#[Proxy]`.
+To share one declaration across properties, put `#[Proxy]` on a subclass instead:
+
+```php
+#[Proxy(VendorConfig::class)]
+final readonly class VendorConfigProxy extends ImmutableProxy {}
+
+/** @var VendorConfigProxy&VendorConfig */
+public VendorConfigProxy $config;
+```
 
 **Using**
 
