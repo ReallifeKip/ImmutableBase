@@ -775,6 +775,74 @@ UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Ki
 
 ---
 
+## ImmutableProxy - 存放非 ImmutableBase 物件
+
+屬性型別僅限 ImmutableBase 子類、Enum 與內建型別，因為 ImmutableBase 無法擔保其他類別的不可變性。`ImmutableProxy` 解除了這個限制：它可以存放**任何物件——不論是否可變、來自哪個套件**——而持有它的物件依然不可變。
+
+Proxy 從不保存物件本身，只保存它序列化後的快照。每次 `get()` 都會重建一份全新的深層複本，因此無論修改複本，或在交出後修改原物件，都不會影響持有者。
+
+**具型別子類（推薦）**——`get()` 的原生回傳型別標明了存放的類別，任何 IDE 都能完整提示：
+
+```php
+use ReallifeKip\ImmutableBase\ImmutableProxy;
+
+final readonly class VendorConfigProxy extends ImmutableProxy
+{
+    public function get(): VendorConfig { return parent::get(); }
+}
+
+readonly class ApiClient extends DataTransferObject
+{
+    public VendorConfigProxy $config;
+}
+```
+
+每個被存放的類別只需一個子類，可在所有 DTO / VO 中重複使用。
+
+**基底類別搭配 `#[Proxy]`**——不需子類，但 IDE 提示取決於工具是否理解 `@template` 泛型：
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Proxy;
+
+readonly class ApiClient extends DataTransferObject
+{
+    /** @var ImmutableProxy<VendorConfig> */
+    #[Proxy(VendorConfig::class)]
+    public ImmutableProxy $config;
+}
+```
+
+**使用方式**
+
+```php
+$client = ApiClient::fromArray(['config' => $vendorConfig]); // 自動包裝
+
+$cfg = $client->config->get();   // 真正的 VendorConfig：全新的深層複本
+$cfg->setTimeout(5);             // 只改到複本，$client 不受影響
+
+$client->with(['config' => $cfg]);   // 替換存放的物件
+$client->toArray();                  // ['config' => $vendorConfig->jsonSerialize()]
+$client->equals($other);             // 比對快照
+```
+
+| | 行為 |
+|---|---|
+| 接受的輸入 | 存放類別的實例（自動包裝），或已存放該類別的 Proxy |
+| `get()` | 每次呼叫都是新的深層複本：讀一次存入變數即可 |
+| `toArray()` / `toJson()` | 存放物件的 `JsonSerializable` 形式；否則拋出 `InvalidSerializeTargetException` |
+| `equals()` | 相同的 Proxy 類別且快照相同 |
+| `with()` | 整個替換；深層路徑（`config.timeout`）會拋出 `InvalidWithPathException` |
+| ib-writer | TypeScript 為 `unknown`；Markdown 顯示存放的類別 |
+
+**限制**
+
+- 存放的物件必須可序列化：內部任何地方含有 `Closure`、resource 或匿名類別，都會拋出 `UnserializableValueException`。
+- 尚不支援作為 union 成員或 `#[ArrayOf]` 元素。
+- `fromArray($x->toArray())` 無法重建 Proxy 屬性：它序列化後的形式是物件的 JSON，Proxy 無法將其還原為物件。
+- 不保留物件身分（`get() !== get()`）；序列化內容不同的兩個物件（快取、延遲初始化欄位）會被視為不相等。
+
+---
+
 ## 設定
 
 ### `ImmutableBase::strict(bool $on)`
@@ -847,7 +915,7 @@ vendor/bin/ib-writer --format=ts --output=docs
 
 類結構或 Attribute 配置有誤時拋出，屬於程式設計錯誤，通常在首次實例化進行反射掃描時觸發。
 
-`InvalidPropertyTypeException` - 屬性宣告了不受支援的型別（如：`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類）。
+`InvalidPropertyTypeException` - 屬性宣告了不受支援的型別（如：`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類；這類物件請透過 [`ImmutableProxy`](#immutableproxy---存放非-immutablebase-物件) 存放）。
 
 `InvalidVisibilityException` - 屬性未宣告為 `public`。
 
@@ -861,7 +929,9 @@ vendor/bin/ib-writer --format=ts --output=docs
 
 `InvalidCompareTargetException` - `equals()` 的比較對象與自身類不同，或陣列中包含無法比較的非 ImmutableBase 物件。
 
-`InvalidSerializeTargetException` - `toArray()` / `toJson()` 遇到未實作 `JsonSerializable` 的非 ImmutableBase 物件（存放於 `mixed` 或一般 `array` 屬性中）。
+`InvalidSerializeTargetException` - `toArray()` / `toJson()` 遇到未實作 `JsonSerializable` 的非 ImmutableBase 物件（存放於 `mixed`、一般 `array` 屬性或 `ImmutableProxy` 中）。
+
+`InvalidProxyException` - `ImmutableProxy` 屬性無法確定存放的類別（基底類別未加 `#[Proxy]`、`#[Proxy]` 指向不存在的類別或與子類 `get()` 的回傳型別矛盾）、`#[Proxy]` 用在非 Proxy 屬性上，或 Proxy 被用作 union 成員。
 
 `InvalidWithPathException` - `with()` 的深層路徑指向純量屬性，無法向下展開。
 
@@ -880,6 +950,8 @@ vendor/bin/ib-writer --format=ts --output=docs
 `InvalidEnumValueException` - 值無法解析為目標 Enum 的任何 case，名稱查找及 `tryFrom()` 皆失敗。
 
 `InvalidJsonException` - JSON 字串無法解析為物件：JSON 格式錯誤，或為非空 list-rooted JSON（如 `[1,2,3]`）。空字面 `[]` 為例外允許，以保留 `#[SkipOnNull]` 將關聯式 DTO 清空後的 `toJson()` → `fromJson()` round-trip。
+
+`UnserializableValueException` - 交給 `ImmutableProxy` 的物件無法序列化（內含 `Closure`、resource、匿名類別實例等）。
 
 #### ValidationException - 驗證錯誤
 
@@ -916,7 +988,7 @@ vendor/bin/ib-writer --format=ts --output=docs
 ## 注意事項
 
 1. 所有子類屬性必須為 public；由於 ImmutableBase 為 readonly class，整條繼承鏈在 PHP 語言層級也必須是 readonly。
-2. 此體系子物件所有屬性型別禁止設為：`null`、`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類，如：`DateTime`、`Closure`。
+2. 此體系子物件所有屬性型別禁止設為：`null`、`iterable`、`object`、非 ImmutableBase 子類或非 Enum 的類，如：`DateTime`、`Closure`——這類物件請透過 [`ImmutableProxy`](#immutableproxy---存放非-immutablebase-物件) 存放。
 3. Enum 屬性接受 case 名稱（`"HIGH"`）或 backed 值（`3`），解析後的屬性值始終為 Enum 實例。
 4. 支援 `mixed` 型別，但值不會被進行驗證。
 5. `float` 屬性接受 `int` 輸入並自動轉為 `float`，與 PHP 在 `declare(strict_types=1)` 下的行為一致（int 轉 float 是嚴格模式唯一允許的隱式轉換）。純量成員組成的聯型遵循 PHP 的優先序——精確匹配優先於轉換，因此 `int|float` 會將 `1` 保留為 `int`，`float|string` 則轉為 `float`。`#[ArrayOf(Native::float)]` 的元素亦同。

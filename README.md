@@ -775,6 +775,74 @@ Available `KeyCase` values:
 
 ---
 
+## ImmutableProxy - Holding Non-ImmutableBase Objects
+
+Properties are limited to ImmutableBase classes, enums and builtins, because ImmutableBase cannot vouch for the immutability of anyone else's class. `ImmutableProxy` lifts that limit: it holds **any object — mutable or not, from any package —** while the owning object stays immutable.
+
+The proxy never stores the object itself, only a serialized snapshot of it. Every `get()` rebuilds a fresh deep copy, so neither mutating a copy nor mutating the original after it was handed over can reach the owner.
+
+**Typed subclass (recommended)** — `get()`'s native return type names the held class and gives every IDE full completion:
+
+```php
+use ReallifeKip\ImmutableBase\ImmutableProxy;
+
+final readonly class VendorConfigProxy extends ImmutableProxy
+{
+    public function get(): VendorConfig { return parent::get(); }
+}
+
+readonly class ApiClient extends DataTransferObject
+{
+    public VendorConfigProxy $config;
+}
+```
+
+One subclass per held class, reusable across every DTO / VO.
+
+**Base class with `#[Proxy]`** — no subclass; completion then depends on your tooling understanding `@template` generics:
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\Proxy;
+
+readonly class ApiClient extends DataTransferObject
+{
+    /** @var ImmutableProxy<VendorConfig> */
+    #[Proxy(VendorConfig::class)]
+    public ImmutableProxy $config;
+}
+```
+
+**Usage**
+
+```php
+$client = ApiClient::fromArray(['config' => $vendorConfig]); // wrapped automatically
+
+$cfg = $client->config->get();   // a real VendorConfig: a fresh deep copy
+$cfg->setTimeout(5);             // changes the copy only; $client is unaffected
+
+$client->with(['config' => $cfg]);   // replace the held object
+$client->toArray();                  // ['config' => $vendorConfig->jsonSerialize()]
+$client->equals($other);             // compares snapshots
+```
+
+| | Behaviour |
+|---|---|
+| Accepted input | An instance of the held class (wrapped), or a proxy already holding it |
+| `get()` | A new deep copy on every call: read it once into a variable |
+| `toArray()` / `toJson()` | The held object's `JsonSerializable` form; `InvalidSerializeTargetException` otherwise |
+| `equals()` | Same proxy class and identical snapshots |
+| `with()` | Replace the whole object; deep paths into it (`config.timeout`) throw `InvalidWithPathException` |
+| ib-writer | TypeScript `unknown`; Markdown shows the held class |
+
+**Limits**
+
+- The held object must be serializable: a `Closure`, a resource or an anonymous class anywhere inside it throws `UnserializableValueException`.
+- Not yet supported as a union member or an `#[ArrayOf]` element.
+- `fromArray($x->toArray())` does not rebuild a proxied property: its serialized form is the object's JSON, which the proxy cannot turn back into an object.
+- Object identity is not preserved (`get() !== get()`), and two objects whose serialized internals differ (caches, lazy fields) compare unequal.
+
+---
+
 ## Configuration
 
 ### `ImmutableBase::strict(bool $on)`
@@ -847,7 +915,7 @@ All exceptions extend `ImmutableBaseException` and are categorized into two base
 
 Thrown when class structure or attribute configuration is incorrect. These are programming errors, typically triggered during reflection scanning on first instantiation.
 
-`InvalidPropertyTypeException` - A property declares an unsupported type (e.g. `iterable`, `object`, non-ImmutableBase/non-Enum classes).
+`InvalidPropertyTypeException` - A property declares an unsupported type (e.g. `iterable`, `object`, non-ImmutableBase/non-Enum classes; hold those through [`ImmutableProxy`](#immutableproxy---holding-non-immutablebase-objects)).
 
 `InvalidVisibilityException` - A property is not declared as `public`.
 
@@ -861,7 +929,9 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 
 `InvalidCompareTargetException` - The `equals()` comparison target is not the same class, or an array contains a non-ImmutableBase object that cannot be compared.
 
-`InvalidSerializeTargetException` - `toArray()` / `toJson()` met a non-ImmutableBase object (held by a `mixed` or plain `array` property) that does not implement `JsonSerializable`.
+`InvalidSerializeTargetException` - `toArray()` / `toJson()` met a non-ImmutableBase object (held by a `mixed` or plain `array` property, or an `ImmutableProxy`) that does not implement `JsonSerializable`.
+
+`InvalidProxyException` - An `ImmutableProxy` property does not determine its held class (base class without `#[Proxy]`, `#[Proxy]` naming a missing class or contradicting the subclass's `get()`), `#[Proxy]` is used on a non-proxy property, or a proxy is used as a union member.
 
 `InvalidWithPathException` - A `with()` deep path targets a scalar property that cannot be traversed further.
 
@@ -880,6 +950,8 @@ Thrown during construction (`fromArray`, `fromJson`) or mutation (`with`) when i
 `InvalidEnumValueException` - The value cannot be resolved to any case of the target Enum; both name lookup and `tryFrom()` failed.
 
 `InvalidJsonException` - The JSON string cannot be parsed into an object: malformed JSON, or non-empty list-rooted JSON (e.g. `[1,2,3]`). The empty literal `[]` is permitted to preserve `toJson()` → `fromJson()` round-trips when `#[SkipOnNull]` empties an associative DTO.
+
+`UnserializableValueException` - An object given to an `ImmutableProxy` cannot be serialized (it holds a `Closure`, a resource, an anonymous class instance, ...).
 
 #### ValidationException - Validation Errors
 
@@ -916,7 +988,7 @@ This section is provided for v3 migration reference only.
 ## Notes
 
 1. All subclass properties must be public. Since ImmutableBase is declared as a readonly class, the entire inheritance chain must also be readonly at the PHP language level.
-2. Forbidden property types: `null`, `iterable`, `object`, non-ImmutableBase/non-Enum classes such as `DateTime`, `Closure`.
+2. Forbidden property types: `null`, `iterable`, `object`, non-ImmutableBase/non-Enum classes such as `DateTime`, `Closure` — hold such objects through [`ImmutableProxy`](#immutableproxy---holding-non-immutablebase-objects).
 3. Enum properties accept case names (`"HIGH"`) or backed values (`3`). The resolved property value is always an Enum instance.
 4. `mixed` type is supported, but values will not be validated.
 5. `float` properties accept `int` input and widen it to `float`, matching PHP under `declare(strict_types=1)` — int-to-float is the one implicit conversion strict mode permits. A union of scalar members follows PHP's precedence rule: an exact match wins over widening, so `int|float` keeps `1` as `int` while `float|string` widens it. The same applies to `#[ArrayOf(Native::float)]` elements.
