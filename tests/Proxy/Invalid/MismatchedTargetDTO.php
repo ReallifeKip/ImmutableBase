@@ -9,7 +9,7 @@ use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 use Tests\Proxy\OpaqueThing;
 use Tests\Proxy\VendorConfigProxy;
 
-/** #[Proxy] names a different class than the subclass's get() returns. */
+/** The property's #[Proxy] contradicts the one on its typed subclass. */
 readonly class MismatchedTargetDTO extends DataTransferObject
 {
     #[Proxy(OpaqueThing::class)]

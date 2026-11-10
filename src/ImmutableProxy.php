@@ -5,94 +5,139 @@ declare (strict_types = 1);
 namespace ReallifeKip\ImmutableBase;
 
 use JsonSerializable;
-use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidProxyException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSerializeTargetException;
-use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\UnserializableValueException;
-use ReflectionMethod;
-use ReflectionNamedType;
+use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ImmutableViolationException;
 use Throwable;
 
 /**
  * Holds any object — mutable or not, from any package — so that the
- * ImmutableBase object owning it stays immutable.
+ * ImmutableBase object owning it stays immutable, while reading as if it
+ * were the object itself.
  *
- * The proxy stores only a serialized snapshot of the object, never the object
- * itself, and every get() rebuilds a fresh deep copy. Mutating a copy, or the
- * original object after it was handed over, never reaches the owner.
+ * The proxy stores only a serialized snapshot, never the object. Reads are
+ * forwarded to a fresh deep copy rebuilt from that snapshot, so neither the
+ * original object (mutated after it was handed over) nor any copy can reach
+ * the owner:
  *
- * Declare a property either with a typed subclass (recommended: get()'s
- * native return type gives every IDE completion and names the held class):
+ *     $client->config->timeout;        // property read
+ *     $client->config->describe();     // method call
+ *     (string) $client->config;        // __toString
  *
- *     final readonly class VendorConfigProxy extends ImmutableProxy
- *     {
- *         public function get(): VendorConfig { return parent::get(); }
- *     }
+ * Writes are refused with ImmutableViolationException: assigning or
+ * unsetting a property, and calling a method that changes the object
+ * (detected by comparing the copy with the snapshot after the call). To
+ * change the held object, replace it with with().
+ *
+ * The proxy's own members are all private (jsonSerialize() aside, which
+ * the interface requires and which forwards anyway), so every public name
+ * belongs to the held object: $proxy->get('key') calls the held object's
+ * get(). Proxies::unwrap() returns a real instance when one is needed, e.g.
+ * for a parameter typed as the held class.
+ *
+ * Declare a typed subclass, naming the held class for ImmutableBase
+ * (#[Proxy]) and for the IDE (@mixin):
+ *
+ *     /** @mixin VendorConfig *\/
+ *     #[Proxy(VendorConfig::class)]
+ *     final readonly class VendorConfigProxy extends ImmutableProxy {}
+ *
  *     public VendorConfigProxy $config;
  *
- * or with the base class and #[Proxy] naming the held class:
- *
- *     #[Proxy(VendorConfig::class)]
- *     public ImmutableProxy $config;   // @var ImmutableProxy<VendorConfig>
- *
- * In both cases ImmutableBase wraps a given instance automatically.
+ * or use the base class with #[Proxy] on the property. ImmutableBase wraps
+ * a given instance automatically.
  *
  * @template T of object
  */
 readonly class ImmutableProxy implements JsonSerializable
 {
-    /** @var class-string<T> The class of the held object. */
-    public string $class;
+    /** @var class-string<T> */
+    private string $heldClass;
     private string $snapshot;
 
-    /** @param T $object */
-    final protected function __construct(object $object)
+    /**
+     * Engine-only: ImmutableBase wraps values through Internal\ProxyAccess.
+     *
+     * @param T $object
+     * @throws UnserializableValueException When the object cannot be serialized (e.g. holds a Closure or a resource).
+     */
+    private function __construct(object $object)
     {
         try {
             $this->snapshot = serialize($object);
         } catch (Throwable $e) {
             throw new UnserializableValueException($object, $e->getMessage());
         }
-        $this->class = $object::class;
+        $this->heldClass = $object::class;
     }
 
-    /**
-     * Wraps $object. A typed subclass only accepts instances of the class its
-     * get() declares.
-     *
-     * @param T $object
-     * @throws InvalidValueException When a typed subclass is given another class.
-     * @throws UnserializableValueException When the object cannot be serialized (e.g. holds a Closure or a resource).
-     * @return static
-     */
-    final public static function of(object $object): static
-    {
-        $target = static::declaredTarget();
-        if ($target !== null && !$object instanceof $target) {
-            throw new InvalidValueException($target, $object);
-        }
-
-        return new static($object);
-    }
-
-    /**
-     * A fresh deep copy of the held object. Every call returns a new
-     * instance; changing it does not change what the proxy holds.
-     *
-     * @return T
-     */
-    public function get(): object
+    /** @return T A fresh deep copy of the held object. */
+    private function copy(): object
     {
         return unserialize($this->snapshot);
     }
 
-    /**
-     * Whether both proxies are of the same class and hold structurally
-     * identical objects (identical snapshots).
-     */
-    final public function equals(self $other): bool
+    /** Same proxy class and structurally identical held objects. */
+    private function sameAs(self $other): bool
     {
         return $other::class === static::class && $other->snapshot === $this->snapshot;
+    }
+
+    /**
+     * Runs $operation against a fresh copy and returns its result; refuses
+     * the operation when it changed the copy, since that change could never
+     * reach the held object.
+     *
+     * @throws ImmutableViolationException
+     */
+    private function forward(string $operation, \Closure $call): mixed
+    {
+        $copy   = $this->copy();
+        $result = $call($copy);
+        if (serialize($copy) !== $this->snapshot) {
+            throw new ImmutableViolationException("$operation would modify the held {$this->heldClass}, which is immutable; replace it with with() instead.");
+        }
+
+        return $result;
+    }
+
+    public function __get(string $name): mixed
+    {
+        return $this->copy()->$name;
+    }
+
+    public function __isset(string $name): bool
+    {
+        return isset($this->copy()->$name);
+    }
+
+    /** @throws ImmutableViolationException */
+    public function __set(string $name, mixed $value): never
+    {
+        throw new ImmutableViolationException("Cannot assign \$$name: the held {$this->heldClass} is immutable; replace it with with() instead.");
+    }
+
+    /** @throws ImmutableViolationException */
+    public function __unset(string $name): never
+    {
+        throw new ImmutableViolationException("Cannot unset \$$name: the held {$this->heldClass} is immutable; replace it with with() instead.");
+    }
+
+    /** @throws ImmutableViolationException */
+    public function __call(string $method, array $arguments): mixed
+    {
+        return $this->forward("$method()", static fn(object $copy) => $copy->$method(...$arguments));
+    }
+
+    /** @throws ImmutableViolationException */
+    public function __invoke(mixed ...$arguments): mixed
+    {
+        return $this->forward('Invoking it', static fn(object $copy) => $copy(...$arguments));
+    }
+
+    public function __toString(): string
+    {
+        return (string) $this->copy();
     }
 
     /**
@@ -103,37 +148,11 @@ readonly class ImmutableProxy implements JsonSerializable
      */
     final public function jsonSerialize(): mixed
     {
-        $copy = $this->get();
+        $copy = $this->copy();
         if (!$copy instanceof JsonSerializable) {
-            throw new InvalidSerializeTargetException($this->class);
+            throw new InvalidSerializeTargetException($this->heldClass);
         }
 
         return $copy->jsonSerialize();
-    }
-
-    /**
-     * The class a typed subclass holds, read from its get() return type;
-     * null for ImmutableProxy itself, whose target comes from #[Proxy].
-     *
-     * @internal Used by the engine to validate declarations and input.
-     * @throws InvalidProxyException When get() does not declare a single class (e.g. a union) as its return type.
-     * @return class-string|null
-     */
-    final public static function declaredTarget(): ?string
-    {
-        static $targets = [];
-        if (\array_key_exists(static::class, $targets)) {
-            return $targets[static::class];
-        }
-        $method = new ReflectionMethod(static::class, 'get');
-        if ($method->getDeclaringClass()->name === self::class) {
-            return $targets[static::class] = null;
-        }
-        $type = $method->getReturnType();
-        if (!$type instanceof ReflectionNamedType || $type->isBuiltin() || $type->allowsNull()) {
-            throw new InvalidProxyException(static::class . '::get() must declare a single class as its return type, ' . ($type === null ? 'none' : "'$type'") . ' given.');
-        }
-
-        return $targets[static::class] = $type->getName();
     }
 }

@@ -12,6 +12,6 @@ readonly class ApiClientVO extends ValueObject
 
     public function validate(): bool
     {
-        return $this->config->get()->timeout > 0;
+        return $this->config->timeout > 0;
     }
 }

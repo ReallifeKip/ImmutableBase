@@ -16,4 +16,7 @@ readonly class ApiClientDTO extends DataTransferObject
     /** @var ImmutableProxy<OpaqueThing>|null */
     #[Proxy(OpaqueThing::class)]
     public ?ImmutableProxy $opaque;
+    /** @var ImmutableProxy<ClosureHolder>|null */
+    #[Proxy(ClosureHolder::class)]
+    public ?ImmutableProxy $hook;
 }

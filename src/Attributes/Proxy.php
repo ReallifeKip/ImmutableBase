@@ -5,18 +5,23 @@ declare (strict_types = 1);
 namespace ReallifeKip\ImmutableBase\Attributes;
 
 /**
- * Names the class an ImmutableProxy property holds, when the property is
- * typed as the ImmutableProxy base class:
+ * Names the class an ImmutableProxy holds. On a typed subclass (recommended,
+ * paired with @mixin for the IDE):
+ *
+ *     /** @mixin VendorConfig *\/
+ *     #[Proxy(VendorConfig::class)]
+ *     final readonly class VendorConfigProxy extends ImmutableProxy {}
+ *
+ * or on a property typed as the ImmutableProxy base class:
  *
  *     #[Proxy(VendorConfig::class)]
  *     public ImmutableProxy $config;
  *
- * Not needed for a typed subclass, whose get() return type already names the
- * class; if both are present they must agree.
+ * When both the subclass and the property carry one, they must agree.
  *
  * @example #[Proxy(\Symfony\Component\HttpFoundation\Request::class)]
  */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PROPERTY)]
 final class Proxy
 {
     /**

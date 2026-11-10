@@ -6,7 +6,7 @@ namespace Tests\Proxy\Invalid;
 
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 
-readonly class UnionGetDTO extends DataTransferObject
+readonly class MissingClassProxyDTO extends DataTransferObject
 {
-    public UnionGetProxy $config;
+    public MissingClassProxy $thing;
 }

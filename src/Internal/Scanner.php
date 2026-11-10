@@ -328,9 +328,9 @@ final class Scanner
     }
 
     /**
-     * Determines the class an ImmutableProxy property holds: the typed
-     * subclass's get() return type, else the #[Proxy] argument. Returns null
-     * for any property that is not an ImmutableProxy.
+     * Determines the class an ImmutableProxy property holds: the #[Proxy] on
+     * its typed subclass, else the #[Proxy] on the property. Returns null for
+     * any property that is not an ImmutableProxy.
      *
      * @param ReflectionProperty $property The property being scanned.
      * @param ReflectionNamedType|ReflectionUnionType $type Its declared type.
@@ -351,21 +351,14 @@ final class Scanner
 
             return null;
         }
-        $named = null;
-        if ($hasAttribute) {
-            $named = self::getAttributeArgument($property, Proxy::class);
-            if (!\is_string($named) || !(class_exists($named) || interface_exists($named))) {
-                throw new InvalidProxyException("#[Proxy] on $where names a class that does not exist: " . var_export($named, true) . '.');
-            }
-            $named = ltrim($named, '\\');
-        }
-        $declared = $proxyClass::declaredTarget();
+        $named    = $hasAttribute ? ProxyAccess::validTarget(self::getAttributeArgument($property, Proxy::class), $where) : null;
+        $declared = ProxyAccess::declaredTarget($proxyClass);
         if ($declared !== null && $named !== null && $named !== $declared) {
-            throw new InvalidProxyException("#[Proxy($named)] on $where contradicts $proxyClass::get(), which returns $declared.");
+            throw new InvalidProxyException("#[Proxy($named)] on $where contradicts #[Proxy($declared)] on $proxyClass.");
         }
 
         return $declared ?? $named ?? throw new InvalidProxyException(
-            "$where must declare its target class: type it as an ImmutableProxy subclass whose get() returns that class, or add #[Proxy(SomeClass::class)]."
+            "$where must declare its target class: add #[Proxy(SomeClass::class)] to the property, or type it as an ImmutableProxy subclass carrying one."
         );
     }
 

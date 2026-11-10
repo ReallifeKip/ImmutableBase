@@ -209,8 +209,8 @@ final class Resolver
 
     /**
      * The resolver for an ImmutableProxy property: an existing proxy holding
-     * the right class is kept; an instance of the held class is wrapped with
-     * $proxy::of(), which snapshots it; anything else is rejected, naming the
+     * the right class is kept; an instance of the held class is wrapped in a
+     * new $proxy, which snapshots it; anything else is rejected, naming the
      * held class since that is what callers pass.
      *
      * @param class-string<ImmutableProxy> $proxy The declared proxy class.
@@ -219,9 +219,9 @@ final class Resolver
     private static function proxyResolver(string $proxy, string $target): Closure
     {
         return static fn(mixed $value): mixed => match (true) {
-            $value instanceof $proxy && is_a($value->class, $target, true) => $value,
-            $value instanceof $target                                      => $proxy::of($value),
-            default                                                        => throw new InvalidValueException($target, $value),
+            $value instanceof $proxy && is_a(ProxyAccess::heldClass($value), $target, true) => $value,
+            $value instanceof $target                                                       => ProxyAccess::wrap($proxy, $value),
+            default                                                                         => throw new InvalidValueException($target, $value),
         };
     }
 
