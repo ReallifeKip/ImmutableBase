@@ -7,9 +7,11 @@ namespace ReallifeKip\ImmutableBase\Internal;
 use Closure;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
+use ReallifeKip\ImmutableBase\Attributes\InputKey;
 use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
+use ReallifeKip\ImmutableBase\Attributes\OutputKey;
 use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
 use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
@@ -22,6 +24,7 @@ use ReallifeKip\ImmutableBase\Enums\Native;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfTargetException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsageException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyNameException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidProxyException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
@@ -159,11 +162,13 @@ final class Scanner
      * #[Lax], #[SkipOnNull], #[ValidateFromSelf], #[Spec], #[InputKeyTo],
      * #[OutputKeyTo]) and builds the validation lineage via classTree for
      * enforceValidationRules(). Also collects per-property InputKeyTo overrides
-     * into `propertyInputKeyCases` for use by KeyCaser::remapInput().
+     * into `propertyInputKeyCases` and #[InputKey] names into `propertyInputKeys`
+     * for use by KeyCaser::remapInput().
      *
      * @param ReflectionClass $ref The class to scan.
      * @param array{bool, bool, bool} $flags Tuple of [isDTO, isVO, isSVO] indicating the object's base type.
      * @throws InvalidSpecException
+     * @throws InvalidKeyNameException When two properties declare the same #[InputKey].
      * @return Property
      */
     private static function scanProperties(ReflectionClass $ref, array $flags): array
@@ -219,11 +224,17 @@ final class Scanner
             }
         }
         foreach ($prop['types'] as $name => $type) {
-            if ($type['hasInputKeyOverride']) {
+            if ($type['inputKey'] !== null) {
+                if (isset($propInputKeys[$type['inputKey']])) {
+                    throw new InvalidKeyNameException($type['inputKey'], 'InputKey', "$classname::\$$name", "$classname::\${$propInputKeys[$type['inputKey']]}");
+                }
+                $propInputKeys[$type['inputKey']] = $name;
+            } elseif ($type['hasInputKeyOverride']) {
                 $propInputKeyCases[$name] = $type['inputKeyCase'];
             }
         }
         $prop['propertyInputKeyCases'] = $propInputKeyCases ?? null;
+        $prop['propertyInputKeys']     = $propInputKeys ?? null;
 
         return $prop;
     }
@@ -235,13 +246,16 @@ final class Scanner
      * and resolves #[ArrayOf], #[SkipOnNull], #[KeepOnNull], #[InputKeyTo],
      * #[OutputKeyTo] attributes. Property-level #[InputKeyTo] stores the target
      * KeyCase in `inputKeyCase`; combined with `hasInputKeyOverride`, this is
-     * picked up by scanProperties() for KeyCaser::remapInput(). Property-level
-     * #[OutputKeyTo] (falling back to the class-level case) pre-computes `outputKey`.
+     * picked up by scanProperties() for KeyCaser::remapInput(). #[InputKey] stores
+     * its exact key in `inputKey` (taking precedence over #[InputKeyTo]).
+     * `outputKey` is pre-computed from #[OutputKey], else the property-level
+     * #[OutputKeyTo], else the class-level case.
      *
      * @param ReflectionProperty $property         The property to extract metadata from.
      * @param bool               $classSkipOnNull  Whether the owning class has a class-level #[SkipOnNull] attribute.
      * @param KeyCase|null       $classOutputKeyCase Class-level OutputKeyTo case, used when the property has none.
      * @throws InvalidVisibilityException
+     * @throws InvalidKeyNameException When #[InputKey] / #[OutputKey] is not given a non-empty string.
      * @return Type
      */
     private static function scanProperty(ReflectionProperty $property, bool $classSkipOnNull, ?KeyCase $classOutputKeyCase = null): array
@@ -254,6 +268,8 @@ final class Scanner
         $target  = $property->getDeclaringClass()->getName() . "::$$name";
         $inCase  = self::getValidatedKeyCase(self::getAttributeArgument($property, InputKeyTo::class), 'InputKeyTo', $target);
         $outCase = self::getValidatedKeyCase(self::getAttributeArgument($property, OutputKeyTo::class), 'OutputKeyTo', $target) ?? $classOutputKeyCase;
+        $inKey   = self::getValidatedKeyName($property, InputKey::class, 'InputKey', $target);
+        $outKey  = self::getValidatedKeyName($property, OutputKey::class, 'OutputKey', $target);
 
         return [
             'ref'                 => $type,
@@ -263,7 +279,8 @@ final class Scanner
             'propertyName'        => $name,
             'inputKeyCase'        => $inCase,
             'hasInputKeyOverride' => $inCase !== null,
-            'outputKey'           => $outCase !== null ? KeyCaser::convert($name, $outCase) : $name,
+            'inputKey'            => $inKey,
+            'outputKey'           => $outKey ?? ($outCase !== null ? KeyCaser::convert($name, $outCase) : $name),
             'skipOnNull'          => $classSkipOnNull || $property->getAttributes(SkipOnNull::class) !== [],
             'keepOnNull'          => $property->getAttributes(KeepOnNull::class) !== [],
             'isUnion'             => !($type instanceof ReflectionNamedType),
@@ -307,6 +324,30 @@ final class Scanner
         }
 
         return $resolved;
+    }
+
+    /**
+     * Reads the key declared by #[InputKey] or #[OutputKey] on a property.
+     * Returns null when the attribute is absent.
+     *
+     * @param ReflectionProperty $property  The property to inspect.
+     * @param class-string       $class     InputKey::class or OutputKey::class.
+     * @param string             $attribute Short attribute name for the exception message.
+     * @param string             $target    Human-readable scan location for the exception message.
+     * @throws InvalidKeyNameException When the argument is missing or not a non-empty string.
+     */
+    private static function getValidatedKeyName(ReflectionProperty $property, string $class, string $attribute, string $target): ?string
+    {
+        if (!($attributes = $property->getAttributes($class))) {
+            return null;
+        }
+        $args  = $attributes[0]->getArguments();
+        $value = $args[0] ?? $args['key'] ?? null;
+        if (!\is_string($value) || $value === '') {
+            throw new InvalidKeyNameException($value, $attribute, $target);
+        }
+
+        return $value;
     }
 
     /**

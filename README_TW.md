@@ -773,6 +773,27 @@ UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Ki
 | `KeyCase::CamelKebab` | `nick-Name` |
 | `KeyCase::Train` | `Nick-Name` |
 
+### `#[InputKey]` / `#[OutputKey]` - 指定確切 Key 名稱
+
+遇到任何 `KeyCase` 都轉不出來的 key——例如數字開頭、含有 `.` 或 `$` 等字元，或與屬性名稱毫無關係——可以直接指定確切的 key。
+
+- `#[InputKey('...')]` 從該輸入 key 讀取屬性值，屬性名稱本身仍可作為輸入 key。優先於屬性與類別上的 `#[InputKeyTo]`，嚴格模式也不會把該 key 視為未宣告。同一個類別中不能有兩個屬性宣告相同的 key。
+- `#[OutputKey('...')]` 在 `toArray(true)` / `toJson(true)` 時以該 key 輸出屬性。優先於 `#[OutputKeyTo]`；若傳入 `KeyCase` 給 `toArray()` / `toJson()`，仍會轉換所有屬性名稱。
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\InputKey;
+use ReallifeKip\ImmutableBase\Attributes\OutputKey;
+
+readonly class SecurityDTO extends DataTransferObject
+{
+    #[InputKey('2fa'), OutputKey('2fa')]
+    public bool $twoFactor;
+}
+
+$dto = SecurityDTO::fromArray(['2fa' => true]); // twoFactor = true
+$dto->toArray(true);                            // ['2fa' => true]
+```
+
 ---
 
 ## ImmutableProxy - 存放非 ImmutableBase 物件
@@ -935,6 +956,8 @@ vendor/bin/ib-writer --format=ts --output=docs
 `InvalidSpecException` - `#[Spec]` 未提供引數或引數為空。
 
 `InvalidKeyCaseException` - `#[InputKeyTo]` 或 `#[OutputKeyTo]` 接收到非 `KeyCase` enum 實例的值（例如傳入純字串而非 `KeyCase::Camel`）。
+
+`InvalidKeyNameException` - `#[InputKey]` 或 `#[OutputKey]` 未接收到非空字串，或同一類別中有兩個屬性宣告了相同的 `#[InputKey]`。
 
 `InvalidCompareTargetException` - `equals()` 的比較對象與自身類不同，或陣列中包含無法比較的非 ImmutableBase 物件。
 

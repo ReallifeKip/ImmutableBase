@@ -29,6 +29,8 @@ use ReflectionType;
  *     propertyName: string,
  *     inputKeyCase: KeyCase|null,
  *     hasInputKeyOverride: bool,
+ *     inputKey: string|null,
+ *     outputKey: string,
  *     typename: Typename,
  *     skipOnNull: bool,
  *     keepOnNull: bool,
@@ -68,6 +70,7 @@ use ReflectionType;
  *   classTreeReversed: list<class-string>,
  *   inputKeyCase: KeyCase|null,
  *   propertyInputKeyCases: array<string, KeyCase>|null,
+ *   propertyInputKeys: array<string, string>|null,
  *   types: array<string, Type>,
  * }
  *

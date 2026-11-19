@@ -773,6 +773,27 @@ Available `KeyCase` values:
 | `KeyCase::CamelKebab` | `nick-Name` |
 | `KeyCase::Train` | `Nick-Name` |
 
+### `#[InputKey]` / `#[OutputKey]` - Exact Key Names
+
+For keys that no `KeyCase` can produce — keys starting with a digit, containing characters such as `.` or `$`, or unrelated to the property name — declare the exact key instead.
+
+- `#[InputKey('...')]` reads the property from that input key. The property name itself is still accepted. It takes precedence over `#[InputKeyTo]` on the property and on the class, and strict mode does not report the key as undeclared. Two properties of one class cannot declare the same key.
+- `#[OutputKey('...')]` writes the property under that key with `toArray(true)` / `toJson(true)`. It takes precedence over `#[OutputKeyTo]`; passing a `KeyCase` to `toArray()` / `toJson()` still converts every property name.
+
+```php
+use ReallifeKip\ImmutableBase\Attributes\InputKey;
+use ReallifeKip\ImmutableBase\Attributes\OutputKey;
+
+readonly class SecurityDTO extends DataTransferObject
+{
+    #[InputKey('2fa'), OutputKey('2fa')]
+    public bool $twoFactor;
+}
+
+$dto = SecurityDTO::fromArray(['2fa' => true]); // twoFactor = true
+$dto->toArray(true);                            // ['2fa' => true]
+```
+
 ---
 
 ## ImmutableProxy - Holding Non-ImmutableBase Objects
@@ -935,6 +956,8 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 `InvalidSpecException` - `#[Spec]` is used without an argument or with an empty argument.
 
 `InvalidKeyCaseException` - `#[InputKeyTo]` or `#[OutputKeyTo]` received a value that is not a `KeyCase` enum instance (e.g. a plain string instead of `KeyCase::Camel`).
+
+`InvalidKeyNameException` - `#[InputKey]` or `#[OutputKey]` did not receive a non-empty string, or two properties of one class declare the same `#[InputKey]`.
 
 `InvalidCompareTargetException` - The `equals()` comparison target is not the same class, or an array contains a non-ImmutableBase object that cannot be compared.
 

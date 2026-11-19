@@ -25,7 +25,7 @@ final class Serializer
      * to retain null). Array properties are serialized element by element.
      *
      * @param KeyCase|bool $keyCase false: property names as-is; true: each
-     *     property's #[OutputKeyTo] case; a KeyCase: that case for every key,
+     *     property's #[OutputKey] name or #[OutputKeyTo] case; a KeyCase: that case for every key,
      *     nested objects included.
      * @throws InvalidSerializeTargetException
      * @return array<string, mixed>

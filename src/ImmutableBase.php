@@ -99,7 +99,7 @@ abstract readonly class ImmutableBase
      * instantiations reuse the cached metadata from state()['properties'].
      *
      * Input keys are remapped before resolution when class-level or property-level
-     * #[InputKeyTo] attributes are present (see Internal\KeyCaser::remapInput()).
+     * #[InputKeyTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
      *
      * Enforces strict mode rejection of redundant keys when enabled globally
      * or via class-level #[Strict] attribute (unless overridden by #[Lax]).
@@ -113,7 +113,7 @@ abstract readonly class ImmutableBase
             if (($logPath = Metadata::debugPath()) !== null) {
                 self::logging($data, $static, $logPath);
             }
-            if ($class['inputKeyCase'] !== null || $class['propertyInputKeyCases'] !== null) {
+            if ($class['inputKeyCase'] !== null || $class['propertyInputKeyCases'] !== null || ($class['propertyInputKeys'] ?? null) !== null) {
                 $data = KeyCaser::remapInput($data, $class);
             }
             if (
@@ -260,8 +260,9 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Use each property's #[OutputKeyTo] case (falling back to the
-     *       class-level #[OutputKeyTo]); nested objects apply their own.
+     *     - true: Use each property's #[OutputKey] name, else its #[OutputKeyTo]
+     *       case (falling back to the class-level #[OutputKeyTo]); nested
+     *       objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return array
      */
@@ -278,8 +279,9 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Use each property's #[OutputKeyTo] case (falling back to the
-     *       class-level #[OutputKeyTo]); nested objects apply their own.
+     *     - true: Use each property's #[OutputKey] name, else its #[OutputKeyTo]
+     *       case (falling back to the class-level #[OutputKeyTo]); nested
+     *       objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return string
      */
@@ -314,7 +316,7 @@ abstract readonly class ImmutableBase
      * JSON string. For SVOs, replaces the entire wrapped value.
      *
      * Input keys are remapped before resolution when class-level or property-level
-     * #[InputKeyTo] attributes are present (see Internal\KeyCaser::remapInput()).
+     * #[InputKeyTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
      *
      * Dot-notation and bracket-notation paths (e.g. "customer.address.city"
      * or "items[0].sku") are resolved into nested with() calls. The separator
@@ -348,7 +350,7 @@ abstract readonly class ImmutableBase
                 true    => Json::decode($data, false),
                 default => (array) $data
             };
-            if ($props['inputKeyCase'] !== null || $props['propertyInputKeyCases'] !== null) {
+            if ($props['inputKeyCase'] !== null || $props['propertyInputKeyCases'] !== null || ($props['propertyInputKeys'] ?? null) !== null) {
                 $normalizedData = KeyCaser::remapInput($normalizedData, $props);
             }
             foreach ($normalizedData as $path => $value) {

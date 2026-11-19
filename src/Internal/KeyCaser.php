@@ -16,23 +16,33 @@ use ReallifeKip\ImmutableBase\Enums\KeyCase;
 final class KeyCaser
 {
     /**
-     * Applies class-level and property-level InputKeyTo remapping to an input array.
+     * Applies #[InputKey] and class- and property-level #[InputKeyTo] remapping to an input array.
      *
-     * Property-level overrides run first: for each property that carries its own
+     * #[InputKey] runs first: an input key equal to a declared key supplies that
+     * property's value. Property-level overrides come next: for each property that carries its own
      * InputKeyTo, the first input key whose conversion to the property's case
      * equals the property name supplies that property's value. A key used this
-     * way is consumed (removed from the result) unless it is itself the name of a
+     * way (by either attribute) is consumed (removed from the result) unless it is itself the name of a
      * property, so strict mode does not report it as undeclared.
      * Class-level: every remaining string key is converted to the declared KeyCase.
      *
      * @param array<string|int, mixed> $data  Raw input array.
-     * @param array{inputKeyCase: KeyCase|null, propertyInputKeyCases: array<string, KeyCase>|null, types: array<string, mixed>} $class Compiled class metadata.
+     * @param array{inputKeyCase: KeyCase|null, propertyInputKeyCases: array<string, KeyCase>|null, propertyInputKeys?: array<string, string>|null, types: array<string, mixed>} $class Compiled class metadata.
      * @return array<string|int, mixed>
      */
     public static function remapInput(array $data, array $class): array
     {
         $mapped   = [];
         $consumed = [];
+        // ?? null: caches written before #[InputKey] existed have no such entry
+        foreach ($class['propertyInputKeys'] ?? [] as $inputKey => $propName) {
+            if (\array_key_exists($inputKey, $data)) {
+                $mapped[$propName] = $data[$inputKey];
+                if (!isset($class['types'][$inputKey])) {
+                    $consumed[$inputKey] = true;
+                }
+            }
+        }
         foreach ($class['propertyInputKeyCases'] ?? [] as $propName => $propKeyCase) {
             foreach ($data as $inputKey => $inputValue) {
                 if (\is_string($inputKey) && self::convert($inputKey, $propKeyCase) === $propName) {
