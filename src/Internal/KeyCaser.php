@@ -18,34 +18,38 @@ final class KeyCaser
     /**
      * Applies class-level and property-level InputKeyTo remapping to an input array.
      *
-     * Class-level: converts every string key to the declared KeyCase.
-     * Property-level overrides: for each property that carries its own InputKeyTo,
-     * scans the original (pre-class-remap) input and converts each key to the
-     * property's declared case; on the first match, writes the value under the
-     * property name directly.
+     * Property-level overrides run first: for each property that carries its own
+     * InputKeyTo, the first input key whose conversion to the property's case
+     * equals the property name supplies that property's value. A key used this
+     * way is consumed (removed from the result) unless it is itself the name of a
+     * property, so strict mode does not report it as undeclared.
+     * Class-level: every remaining string key is converted to the declared KeyCase.
      *
      * @param array<string|int, mixed> $data  Raw input array.
-     * @param array{inputKeyCase: KeyCase|null, propertyInputKeyCases: array<string, KeyCase>|null} $class Compiled class metadata.
+     * @param array{inputKeyCase: KeyCase|null, propertyInputKeyCases: array<string, KeyCase>|null, types: array<string, mixed>} $class Compiled class metadata.
      * @return array<string|int, mixed>
      */
     public static function remapInput(array $data, array $class): array
     {
-        $original = $data;
-        if ($class['inputKeyCase'] !== null) {
-            $data = self::remapKeys($original, $class['inputKeyCase']);
-        }
-        if ($class['propertyInputKeyCases'] !== null) {
-            foreach ($class['propertyInputKeyCases'] as $propName => $propKeyCase) {
-                foreach ($original as $inputKey => $inputValue) {
-                    if (\is_string($inputKey) && self::convert($inputKey, $propKeyCase) === $propName) {
-                        $data[$propName] = $inputValue;
-                        break;
+        $mapped   = [];
+        $consumed = [];
+        foreach ($class['propertyInputKeyCases'] ?? [] as $propName => $propKeyCase) {
+            foreach ($data as $inputKey => $inputValue) {
+                if (\is_string($inputKey) && self::convert($inputKey, $propKeyCase) === $propName) {
+                    $mapped[$propName] = $inputValue;
+                    if (!isset($class['types'][$inputKey])) {
+                        $consumed[$inputKey] = true;
                     }
+                    break;
                 }
             }
         }
+        $rest = $consumed === [] ? $data : array_diff_key($data, $consumed);
+        if ($class['inputKeyCase'] !== null) {
+            $rest = self::remapKeys($rest, $class['inputKeyCase']);
+        }
 
-        return $data;
+        return $mapped === [] ? $rest : array_replace($rest, $mapped);
     }
 
     /**
