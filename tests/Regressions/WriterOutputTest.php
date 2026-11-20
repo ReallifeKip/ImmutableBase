@@ -131,6 +131,31 @@ class WriterOutputTest extends TestCase
 
     // ─── Markdown ────────────────────────────────────────────
 
+    public function testMarkdownShowsBooleanDefaultsAsWords(): void
+    {
+        $md = $this->generate('md');
+        $this->assertStringContainsString('| enabled |  | bool | true | - |', $md);
+        $this->assertStringContainsString('| disabled |  | bool | false | - |', $md);
+    }
+
+    public function testMarkdownRequiredColumnHonoursDefaults(): void
+    {
+        $md = $this->generate('md');
+        $this->assertStringContainsString('| plain | yes | string | - | - |', $md);
+        // A non-nullable property with a default can be omitted from the input
+        $this->assertStringContainsString('| enabled |  | bool |', $md);
+    }
+
+    public function testMarkdownShowsForeignObjectDefaultByType(): void
+    {
+        $this->assertStringContainsString('| stamp |  | mixed | DateTimeImmutable | - |', $this->generate('md'));
+    }
+
+    public function testMarkdownShowsClosureDefaultAsDynamic(): void
+    {
+        $this->assertStringContainsString('| rule |  | mixed | (dynamic) | - |', $this->generate('md'));
+    }
+
     public function testMarkdownShowsCallableLookingStringDefaultVerbatim(): void
     {
         $this->assertStringContainsString('| mode |  | string | trim | - |', $this->generate('md'));

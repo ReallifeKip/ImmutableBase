@@ -81,6 +81,19 @@ class ExplicitKeyTest extends TestCase
         ExplicitKeyPrecedenceDTO::fromArray(['first_name' => 'Kip', 'x-api-key' => 'k', 'typo' => 1]);
     }
 
+    public function testInputKeyIsAcceptedUnderGlobalStrict(): void
+    {
+        ImmutableBase::strict(true);
+        try {
+            $dto = ExplicitKeyDTO::fromArray(self::INPUT);
+            $this->assertSame(8, $dto->with(['user.id' => 8])->userId);
+            $this->expectException(StrictViolationException::class);
+            ExplicitKeyDTO::fromArray(self::INPUT + ['typo' => 1]);
+        } finally {
+            ImmutableBase::strict(false);
+        }
+    }
+
     public function testDuplicateInputKeyIsRejected(): void
     {
         $this->expectException(InvalidKeyNameException::class);

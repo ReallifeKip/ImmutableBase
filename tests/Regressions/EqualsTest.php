@@ -75,4 +75,16 @@ class EqualsTest extends TestCase
         $this->expectException(InvalidCompareTargetException::class);
         $a->equals($b);
     }
+
+    public function testObjectEqualsItself(): void
+    {
+        $a = MixedDTO::fromArray(['any' => new \DateTimeImmutable('2020-01-01')]);
+        $this->assertTrue($a->equals($a));
+    }
+
+    public function testSameForeignInstanceInMixedPropertyIsEqual(): void
+    {
+        $date = new \DateTimeImmutable('2020-01-01');
+        $this->assertTrue(MixedDTO::fromArray(['any' => $date])->equals(MixedDTO::fromArray(['any' => $date])));
+    }
 }
