@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\DataTransferObjects\KeyConversion;
 
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 
 /**
- * Exercises every KeyCase variant via property-level OutputKeyTo.
+ * Exercises every KeyCase variant via property-level OutputCaseTo.
  * Expected toArray(true) output keys (convertCase(propName, KeyCase)):
  *
  *   snakeProp      → snake_prop       (Snake)
@@ -23,27 +23,27 @@ use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
  */
 readonly class AllOutputKeyCasesDTO extends DataTransferObject
 {
-    #[OutputKeyTo(KeyCase::Snake)]
+    #[OutputCaseTo(KeyCase::Snake)]
     public string $snakeProp;
 
-    #[OutputKeyTo(KeyCase::Camel)]
+    #[OutputCaseTo(KeyCase::Camel)]
     public string $camelProp;
 
-    #[OutputKeyTo(KeyCase::Pascal)]
+    #[OutputCaseTo(KeyCase::Pascal)]
     public string $pascalProp;
 
-    #[OutputKeyTo(KeyCase::Macro)]
+    #[OutputCaseTo(KeyCase::Macro)]
     public string $macroProp;
 
-    #[OutputKeyTo(KeyCase::Kebab)]
+    #[OutputCaseTo(KeyCase::Kebab)]
     public string $kebabProp;
 
-    #[OutputKeyTo(KeyCase::Train)]
+    #[OutputCaseTo(KeyCase::Train)]
     public string $trainProp;
 
-    #[OutputKeyTo(KeyCase::PascalSnake)]
+    #[OutputCaseTo(KeyCase::PascalSnake)]
     public string $pascalSnakeProp;
 
-    #[OutputKeyTo(KeyCase::CamelKebab)]
+    #[OutputCaseTo(KeyCase::CamelKebab)]
     public string $camelKebabProp;
 }

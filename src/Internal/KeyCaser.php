@@ -8,7 +8,7 @@ use ReallifeKip\ImmutableBase\Enums\KeyCase;
 
 /**
  * Key naming conventions: converting a name to a KeyCase, and remapping an
- * input array's keys per the class- and property-level #[InputKeyTo].
+ * input array's keys per the class- and property-level #[InputCaseTo].
  * Output keys use convert() directly (see Serializer).
  *
  * @internal Not part of the public API; may change without notice.
@@ -16,11 +16,11 @@ use ReallifeKip\ImmutableBase\Enums\KeyCase;
 final class KeyCaser
 {
     /**
-     * Applies #[InputKey] and class- and property-level #[InputKeyTo] remapping to an input array.
+     * Applies #[InputKey] and class- and property-level #[InputCaseTo] remapping to an input array.
      *
      * #[InputKey] runs first: an input key equal to a declared key supplies that
      * property's value. Property-level overrides come next: for each property that carries its own
-     * InputKeyTo, the first input key whose conversion to the property's case
+     * InputCaseTo, the first input key whose conversion to the property's case
      * equals the property name supplies that property's value. A key used this
      * way (by either attribute) is consumed (removed from the result) unless it is itself the name of a
      * property, so strict mode does not report it as undeclared.

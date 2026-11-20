@@ -10,8 +10,9 @@ use Benchmarks\DataTransferObjects\SimpleDTO;
 use Benchmarks\Enums\OrderStatus;
 use PhpBench\Attributes\BeforeMethods;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
-if (ImmutableBase::state()['cachedMeta'] === []) {
+if (Metadata::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }
 

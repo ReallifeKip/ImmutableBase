@@ -8,7 +8,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\StrictViolationException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
-use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\Internal\Metadata;
 use Tests\DataTransferObjects\DefaultValuesBothDTO;
 use Tests\DataTransferObjects\KeyConversion\HeadersMimicDTO;
@@ -35,19 +34,19 @@ class CacheCompatibilityTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->original = ImmutableBase::state();
+        $this->original = Metadata::state();
     }
 
     protected function tearDown(): void
     {
-        $s = &ImmutableBase::state();
+        $s = &Metadata::state();
         $s = $this->original;
     }
 
     /** @param bool $cached Whether to serve metadata from the v4.6.0 cache (with a marker) or by reflection. */
     private static function reset(bool $cached): void
     {
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['properties'] = [];
         $s['refs']       = [];
         $s['cachedMeta'] = [];

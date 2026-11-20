@@ -7,7 +7,7 @@ namespace Tests;
 use org\bovigo\vfs\vfsStream;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\CLI\Writer;
-use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 class WriterTest extends TestCase
 {
@@ -21,8 +21,8 @@ class WriterTest extends TestCase
     {
         Writer::$silent           = true;
         $this->outputDir          = sys_get_temp_dir() . '/ib_writer_test_' . uniqid();
-        $this->originalProperties = ImmutableBase::state()['properties'];
-        $this->originalRefs       = ImmutableBase::state()['refs'];
+        $this->originalProperties = Metadata::state()['properties'];
+        $this->originalRefs       = Metadata::state()['refs'];
         mkdir($this->outputDir, 0777, true);
     }
 
@@ -39,7 +39,7 @@ class WriterTest extends TestCase
             rmdir($this->outputDir);
         }
         // Restore original state
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['properties'] = $this->originalProperties;
         $s['refs']       = $this->originalRefs;
     }
@@ -195,7 +195,7 @@ class WriterTest extends TestCase
     public function testGenerateResetsPropertiesAndRebuilds(): void
     {
         // Clear properties to force re-indexing
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $savedProps      = $s['properties'];
         $s['properties'] = [];
 
@@ -203,9 +203,9 @@ class WriterTest extends TestCase
         Writer::generate('mmd', $outputFile);
 
         // Properties should be repopulated after generate
-        $this->assertNotEmpty(ImmutableBase::state()['properties']);
+        $this->assertNotEmpty(Metadata::state()['properties']);
 
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['properties'] = $savedProps;
     }
 

@@ -6,7 +6,6 @@ namespace Tests;
 
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
-use ReallifeKip\ImmutableBase\ImmutableBase;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputBasicDTO;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputChildDTO;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputGrandChildDTO;
@@ -14,12 +13,13 @@ use Tests\DataTransferObjects\PrepareInput\PrepareInputGuardDTO;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputParentDTO;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputRequiredDTO;
 use Tests\DataTransferObjects\PrepareInput\PrepareInputWithDefaultsDTO;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 class PrepareInputTest extends TestCase
 {
     protected function setUp(): void
     {
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['properties'] = [];
         $s['refs']       = [];
@@ -154,7 +154,7 @@ class PrepareInputTest extends TestCase
         // 先暖機：建立真實的 property cache
         PrepareInputBasicDTO::fromArray(['email' => 'warmup@example.com', 'name' => 'Warmup']);
 
-        $s = &ImmutableBase::state();
+        $s = &Metadata::state();
 
         // 模擬舊 cache：從已建立的 $s['properties'] 中移除 hasPrepareInput 欄位
         // （代表磁碟 cache 在加入此欄位前產生的舊格式）

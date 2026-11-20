@@ -5,7 +5,6 @@ declare (strict_types = 1);
 namespace Tests\Attacks;
 
 use PHPUnit\Framework\TestCase;
-use ReallifeKip\ImmutableBase\Exceptions\ImmutableBaseException;
 use Tests\Attacks\Objects\Enums\Color;
 use Tests\Attacks\Objects\Enums\EnumDTO;
 use Tests\Attacks\Objects\Enums\Priority;
@@ -20,9 +19,6 @@ class Attack3Test extends TestCase
 
     protected function setUp(): void
     {
-        ImmutableBaseException::$depth = 0;
-        ImmutableBaseException::$paths = [];
-
         $this->baseArray = [
             'string'              => 'string',
             'int'                 => 1,

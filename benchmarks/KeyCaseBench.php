@@ -6,8 +6,9 @@ namespace Benchmarks;
 use Benchmarks\DataTransferObjects\InputKeyDTO;
 use Benchmarks\DataTransferObjects\OutputKeyDTO;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
-if (ImmutableBase::state()['cachedMeta'] === []) {
+if (Metadata::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }
 

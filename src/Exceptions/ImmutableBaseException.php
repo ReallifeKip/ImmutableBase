@@ -21,14 +21,6 @@ use Exception;
  */
 abstract class ImmutableBaseException extends Exception
 {
-    /**
-     * @deprecated No longer read or written; error paths are tracked per exception instance.
-     */
-    public static int $depth = 0;
-    /**
-     * @deprecated No longer read or written; error paths are tracked per exception instance.
-     */
-    public static array $paths = [];
     public ?string $class      = null;
     /** @var list<string> Property segments collected so far, outermost first. */
     private array $pathSegments = [];

@@ -14,7 +14,6 @@ use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\InvalidValueEx
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\UnserializableValueException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ImmutableViolationException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
-use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReallifeKip\ImmutableBase\ImmutableProxy;
 use ReallifeKip\ImmutableBase\Proxies;
 use Tests\Proxy\ApiClientDTO;
@@ -30,6 +29,7 @@ use Tests\Proxy\Invalid\UnknownTargetDTO;
 use Tests\Proxy\OpaqueThing;
 use Tests\Proxy\VendorConfig;
 use Tests\Proxy\VendorConfigProxy;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 /**
  * ImmutableProxy lets a property hold any object — mutable or not, from any
@@ -335,11 +335,11 @@ class ProxyTest extends TestCase
 
     public function testProxyMetadataSurvivesTheCache(): void
     {
-        $original  = ImmutableBase::state();
+        $original  = Metadata::state();
         $cacheFile = sys_get_temp_dir() . '/ib_proxy_cache_' . uniqid() . '.php';
         try {
             Cacher::$silent = true;
-            $s              = &ImmutableBase::state();
+            $s              = &Metadata::state();
             $s['cachePath'] = $cacheFile;
             $level          = ob_get_level();
             ob_start();
@@ -355,14 +355,14 @@ class ProxyTest extends TestCase
             $this->assertSame(VendorConfig::class, $s['cachedMeta'][ApiClientDTO::class]['types']['config']['proxyTarget']);
 
             $client = self::client(['opaque' => new OpaqueThing(3)]);
-            $this->assertArrayNotHasKey('propertyRef', ImmutableBase::state()['properties'][ApiClientDTO::class]['types']['config'], 'served from cache');
+            $this->assertArrayNotHasKey('propertyRef', Metadata::state()['properties'][ApiClientDTO::class]['types']['config'], 'served from cache');
             $this->assertSame(30, $client->config->timeout);
             $this->assertSame(3, $client->opaque->n);
             $this->expectException(InvalidValueException::class);
             self::client(['config' => new OpaqueThing(1)]);
         } finally {
             @unlink($cacheFile);
-            $s = &ImmutableBase::state();
+            $s = &Metadata::state();
             $s = $original;
         }
     }

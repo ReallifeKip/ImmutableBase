@@ -3,11 +3,11 @@
 declare (strict_types = 1);
 namespace Benchmarks\DataTransferObjects;
 
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 
-#[OutputKeyTo(KeyCase::Snake)]
+#[OutputCaseTo(KeyCase::Snake)]
 readonly class OutputKeyDTO extends DataTransferObject
 {
     public string $firstName;

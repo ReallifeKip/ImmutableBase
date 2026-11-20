@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\DataTransferObjects\KeyConversion;
 
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 
 /**
  * Exercises every KeyCase variant whose format is expressible as a valid PHP
  * property name (Kebab/Train/CamelKebab use hyphens and are not valid PHP
- * identifiers, so they cannot appear as property-level InputKeyTo targets).
+ * identifiers, so they cannot appear as property-level InputCaseTo targets).
  *
  * Each property name IS in the declared case, so any input format that shares
  * the same word boundaries will be accepted:
@@ -24,18 +24,18 @@ use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
  */
 readonly class AllInputKeyCasesDTO extends DataTransferObject
 {
-    #[InputKeyTo(KeyCase::Snake)]
+    #[InputCaseTo(KeyCase::Snake)]
     public string $snake_input;
 
-    #[InputKeyTo(KeyCase::Camel)]
+    #[InputCaseTo(KeyCase::Camel)]
     public string $camelInput;
 
-    #[InputKeyTo(KeyCase::Pascal)]
+    #[InputCaseTo(KeyCase::Pascal)]
     public string $PascalInput;
 
-    #[InputKeyTo(KeyCase::Macro)]
+    #[InputCaseTo(KeyCase::Macro)]
     public string $MACRO_INPUT;
 
-    #[InputKeyTo(KeyCase::PascalSnake)]
+    #[InputCaseTo(KeyCase::PascalSnake)]
     public string $Pascal_Snake_Input;
 }

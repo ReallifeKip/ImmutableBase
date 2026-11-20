@@ -72,34 +72,13 @@ abstract readonly class ImmutableBase
         }
     }
     /**
-     * Returns a by-reference handle to the engine's internal state array.
-     * Holds all runtime caches and configuration flags.
-     *
-     * The engine itself no longer uses this handle: it goes through the
-     * narrow accessors of Internal\Metadata. The handle is kept only so
-     * existing callers (test suites resetting caches) keep working.
-     *
-     * @internal
-     * @deprecated Kept for compatibility; slated for removal in the next major version.
-     * DANGER: DO NOT USE THIS METHOD!
-     * INTERNAL USE ONLY. MANIPULATING THIS STATE MANUALLY WILL CAUSE FATAL
-     * UNINTENDED CONSEQUENCES, DATA CORRUPTION, OR UNSTABLE ENGINE BEHAVIOR!
-     *
-     * @return State
-     */
-    public static function &state(): array
-    {
-        return Metadata::state();
-    }
-
-    /**
      * Hydrates the object from an associative array.
      * On first instantiation of a given class, triggers property scanning and
      * resolver compilation via buildPropertyInheritanceChain(). Subsequent
-     * instantiations reuse the cached metadata from state()['properties'].
+     * instantiations reuse the compiled metadata held by Internal\Metadata.
      *
      * Input keys are remapped before resolution when class-level or property-level
-     * #[InputKeyTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
+     * #[InputCaseTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
      *
      * Enforces strict mode rejection of redundant keys when enabled globally
      * or via class-level #[Strict] attribute (unless overridden by #[Lax]).
@@ -188,7 +167,7 @@ abstract readonly class ImmutableBase
      * Loads pre-generated property metadata from a cache file, bypassing
      * reflection-based scanning. The cache must return an associative array
      * keyed by fully-qualified class name. Uses require_once to prevent
-     * double-loading; for test scenarios, set state()['cachedMeta'] directly.
+     * double-loading.
      *
      * @return void
      */
@@ -260,8 +239,8 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Use each property's #[OutputKey] name, else its #[OutputKeyTo]
-     *       case (falling back to the class-level #[OutputKeyTo]); nested
+     *     - true: Use each property's #[OutputKey] name, else its #[OutputCaseTo]
+     *       case (falling back to the class-level #[OutputCaseTo]); nested
      *       objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return array
@@ -279,8 +258,8 @@ abstract readonly class ImmutableBase
      * @param KeyCase|bool $keyCase
      *     Controls the key format of the serialized output.
      *     - false (default): Use property names as-is.
-     *     - true: Use each property's #[OutputKey] name, else its #[OutputKeyTo]
-     *       case (falling back to the class-level #[OutputKeyTo]); nested
+     *     - true: Use each property's #[OutputKey] name, else its #[OutputCaseTo]
+     *       case (falling back to the class-level #[OutputCaseTo]); nested
      *       objects apply their own.
      *     - KeyCase::*: Force all keys (including nested) to the specified case.
      * @return string
@@ -316,7 +295,7 @@ abstract readonly class ImmutableBase
      * JSON string. For SVOs, replaces the entire wrapped value.
      *
      * Input keys are remapped before resolution when class-level or property-level
-     * #[InputKeyTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
+     * #[InputCaseTo] or #[InputKey] attributes are present (see Internal\KeyCaser::remapInput()).
      *
      * Dot-notation and bracket-notation paths (e.g. "customer.address.city"
      * or "items[0].sku") are resolved into nested with() calls. The separator
@@ -390,7 +369,7 @@ abstract readonly class ImmutableBase
     }
     /**
      * Preprocessing step for input normalization before property resolution.
-     * Called after defaults are merged and key remapping (#[InputKeyTo]) is applied,
+     * Called after defaults are merged and key remapping (#[InputCaseTo]) is applied,
      * before type resolution and hydration. Declare in subclasses to normalize values,
      * derive fields, or inject context. Only keys already present in $data are written back.
      *

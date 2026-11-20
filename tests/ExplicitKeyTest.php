@@ -15,6 +15,7 @@ use Tests\DataTransferObjects\KeyConversion\EmptyInputKeyDTO;
 use Tests\DataTransferObjects\KeyConversion\ExplicitKeyDTO;
 use Tests\DataTransferObjects\KeyConversion\ExplicitKeyPrecedenceDTO;
 use Tests\DataTransferObjects\KeyConversion\NonStringOutputKeyDTO;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 /**
  * #[InputKey] / #[OutputKey]: exact key names for input and output, for keys
@@ -117,11 +118,11 @@ class ExplicitKeyTest extends TestCase
 
     public function testCachedMetadataKeepsExplicitKeys(): void
     {
-        $original  = ImmutableBase::state();
+        $original  = Metadata::state();
         $cacheFile = sys_get_temp_dir() . '/ib_explicit_key_cache_' . uniqid() . '.php';
         try {
             Cacher::$silent = true;
-            $s              = &ImmutableBase::state();
+            $s              = &Metadata::state();
             $s['cachePath'] = $cacheFile;
             $s['properties'] = [];
             $s['refs']       = [];
@@ -142,7 +143,7 @@ class ExplicitKeyTest extends TestCase
             $this->assertSame(['2fa' => true, 'user.id' => 7, 'ref' => 'r'], ExplicitKeyDTO::fromArray(self::INPUT)->toArray(true));
         } finally {
             @unlink($cacheFile);
-            $s = &ImmutableBase::state();
+            $s = &Metadata::state();
             $s = $original;
         }
     }

@@ -10,7 +10,7 @@ use Tests\Regressions\Objects\StrictClassAndPropertyCaseDTO;
 use Tests\Regressions\Objects\StrictMappedKeyDTO;
 
 /**
- * An input key consumed by a property-level #[InputKeyTo] is not an undeclared
+ * An input key consumed by a property-level #[InputCaseTo] is not an undeclared
  * key, so strict mode accepts it. Keys nothing maps are still rejected.
  */
 class StrictInputKeyTest extends TestCase

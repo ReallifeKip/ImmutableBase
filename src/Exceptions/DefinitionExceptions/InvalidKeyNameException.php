@@ -4,12 +4,14 @@ declare (strict_types = 1);
 
 namespace ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions;
 
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionException;
+
 /**
  * Thrown at scan time when an #[InputKey] or #[OutputKey] attribute does not
  * receive a non-empty string, or when two properties of one class declare
  * the same #[InputKey].
  */
-class InvalidKeyNameException extends \InvalidArgumentException
+class InvalidKeyNameException extends DefinitionException
 {
     /**
      * @param mixed       $value     The raw value provided.

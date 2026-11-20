@@ -97,6 +97,12 @@ class TypeErrorTest extends TestCase
         self::make(['levels' => [['low']]]);
     }
 
+    public function testStringBackedEnumGivenIntIsInvalidEnumValue(): void
+    {
+        $this->expectException(InvalidEnumValueException::class);
+        TypeErrorFreeDTO::fromArray(['level' => 1]);
+    }
+
     public function testEnumNonCaseConstantIsNotACase(): void
     {
         $this->expectException(InvalidEnumValueException::class);

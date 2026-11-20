@@ -35,9 +35,9 @@ final class Metadata
     ];
 
     /**
-     * By-reference handle to the whole storage. Exists only so the
-     * deprecated ImmutableBase::state() keeps working; engine code must not
-     * use it.
+     * By-reference handle to the whole storage, for test suites that reset
+     * or seed it (compiled metadata, cached metadata, cache path). Engine
+     * code must not use it; it goes through the narrow accessors below.
      *
      * @return State
      */

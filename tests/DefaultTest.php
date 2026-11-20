@@ -7,10 +7,10 @@ use org\bovigo\vfs\vfsStreamDirectory;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
 use ReallifeKip\ImmutableBase\Attributes\Strict;
@@ -52,6 +52,7 @@ use Tests\SingleValueObjects\SVO;
 use Tests\TestObjects\Enum;
 use Tests\ValueObjects\NestedVO;
 use Tests\ValueObjects\VO;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 ImmutableBase::loadCache();
 
@@ -69,7 +70,7 @@ class DefaultTest extends TestCase
     public function setup(): void
     {
         $this->root      = vfsStream::setup('temp');
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $this->array     = [
             'string'              => 'string',
@@ -250,7 +251,7 @@ class DefaultTest extends TestCase
         ] as $class) {
             self::attributeCoverage($class, '');
         }
-        foreach ([InputKeyTo::class, OutputKeyTo::class] as $class) {
+        foreach ([InputCaseTo::class, OutputCaseTo::class] as $class) {
             self::attributeCoverage($class, KeyCase::Camel);
         }
 
@@ -318,7 +319,7 @@ class DefaultTest extends TestCase
         ob_start();
         try {
             (new Cacher())->scan($file);
-            $s               = &ImmutableBase::state();
+            $s               = &Metadata::state();
             $s['properties'] = [];
             $s['refs']       = [];
             $s['cachePath']  = null;
@@ -336,7 +337,7 @@ class DefaultTest extends TestCase
             if (file_exists($cacheFile)) {
                 unlink($cacheFile);
             }
-            $s               = &ImmutableBase::state();
+            $s               = &Metadata::state();
             $s['cachedMeta'] = [];
         }
     }
@@ -357,7 +358,7 @@ class DefaultTest extends TestCase
             if (!file_exists($cacheFile)) {
                 $this->fail('Cacher failed to create cache file.');
             }
-            $s               = &ImmutableBase::state();
+            $s               = &Metadata::state();
             $s['properties'] = [];
             $s['refs']       = [];
             $s['cachePath']  = null;
@@ -374,7 +375,7 @@ class DefaultTest extends TestCase
             if (file_exists($cacheFile)) {
                 unlink($cacheFile);
             }
-            $s               = &ImmutableBase::state();
+            $s               = &Metadata::state();
             $s['cachedMeta'] = [];
         }
     }
@@ -387,13 +388,13 @@ class DefaultTest extends TestCase
             ->setContent('<?php return ' . var_export($mockData, true) . ';')
             ->url();
 
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['cachePath']  = $cacheFile;
 
         ImmutableBase::loadCache();
 
-        $this->assertSame($mockData, ImmutableBase::state()['cachedMeta']);
+        $this->assertSame($mockData, Metadata::state()['cachedMeta']);
     }
 
     public function testInvalidValueWithThrowException()

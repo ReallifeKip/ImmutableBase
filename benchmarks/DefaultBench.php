@@ -7,8 +7,9 @@ use Benchmarks\DataTransferObjects\NestedDTO;
 use Benchmarks\DataTransferObjects\Order;
 use Benchmarks\DataTransferObjects\SimpleDTO;
 use ReallifeKip\ImmutableBase\ImmutableBase;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
-if (ImmutableBase::state()['cachedMeta'] === []) {
+if (Metadata::state()['cachedMeta'] === []) {
     ImmutableBase::loadCache();
 }
 

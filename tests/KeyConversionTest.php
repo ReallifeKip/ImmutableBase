@@ -7,6 +7,7 @@ namespace Tests;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\RemovedAttributeException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use Tests\DataTransferObjects\KeyConversion\AllInputKeyCasesDTO;
@@ -21,7 +22,10 @@ use Tests\DataTransferObjects\KeyConversion\MixedOutputKeyDTO;
 use Tests\DataTransferObjects\KeyConversion\NestedOutputParentDTO;
 use Tests\DataTransferObjects\KeyConversion\PropertyInputKeyDTO;
 use Tests\DataTransferObjects\KeyConversion\PropertyOutputKeyDTO;
+use Tests\DataTransferObjects\KeyConversion\RemovedClassAttributeDTO;
+use Tests\DataTransferObjects\KeyConversion\RemovedPropertyAttributeDTO;
 use Tests\DataTransferObjects\KeyConversion\RoundTripDTO;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 ImmutableBase::loadCache();
 
@@ -29,12 +33,12 @@ class KeyConversionTest extends TestCase
 {
     public function setup(): void
     {
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
     }
 
     // -------------------------------------------------------------------------
-    // InputKeyTo — class-level
+    // InputCaseTo — class-level
     // -------------------------------------------------------------------------
 
     public function testClassLevelInputKeyCamelFromArray(): void
@@ -78,16 +82,16 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // InputKeyTo — property-level
-    // Semantic: #[InputKeyTo(X)] on property $propName converts each input key
+    // InputCaseTo — property-level
+    // Semantic: #[InputCaseTo(X)] on property $propName converts each input key
     // to case X. If the result equals $propName, the value is assigned.
     // Therefore the property name MUST already be in case X format.
     // -------------------------------------------------------------------------
 
     public function testPropertyLevelInputKeyConvertsSnakeInputToCamel(): void
     {
-        // $firstName is Camel → InputKeyTo(Camel) accepts first_name (snake → Camel → firstName)
-        // $last_name is Snake → InputKeyTo(Snake) accepts lastName (camel → Snake → last_name)
+        // $firstName is Camel → InputCaseTo(Camel) accepts first_name (snake → Camel → firstName)
+        // $last_name is Snake → InputCaseTo(Snake) accepts lastName (camel → Snake → last_name)
         $dto = PropertyInputKeyDTO::fromArray([
             'first_name' => 'Alice',
             'lastName'   => 'Smith',
@@ -127,7 +131,7 @@ class KeyConversionTest extends TestCase
 
     public function testPropertyLevelInputKeyNoConversionForPlainProperty(): void
     {
-        // city has no InputKeyTo — only the exact key 'city' is accepted
+        // city has no InputCaseTo — only the exact key 'city' is accepted
         $dto = PropertyInputKeyDTO::fromArray([
             'first_name' => 'Test',
             'lastName'   => 'User',
@@ -156,7 +160,7 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // InputKeyTo — property-level overrides class-level
+    // InputCaseTo — property-level overrides class-level
     // -------------------------------------------------------------------------
 
     public function testPropertyLevelOverridesClassLevel(): void
@@ -177,7 +181,7 @@ class KeyConversionTest extends TestCase
     {
         // Any input format whose words are "user" + "id" → Macro → USER_ID
         foreach (['userId', 'user_id', 'user-id', 'User-Id'] as $inputKey) {
-            $s               = &ImmutableBase::state();
+            $s               = &Metadata::state();
             $s['cachedMeta'] = [];
             $dto             = MixedInputKeyDTO::fromArray(['user_name' => 'test', $inputKey => 'u-999']);
             $this->assertSame('u-999', $dto->USER_ID, "Input key '$inputKey' should map to USER_ID");
@@ -185,7 +189,7 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // InputKeyTo — with() respects key conversion
+    // InputCaseTo — with() respects key conversion
     // -------------------------------------------------------------------------
 
     public function testWithMethodRespectsClassLevelInputKey(): void
@@ -242,10 +246,10 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // OutputKeyTo — toArray(false) default: no conversion
+    // OutputCaseTo — toArray(false) default: no conversion
     // -------------------------------------------------------------------------
 
-    public function testToArrayFalseIgnoresOutputKeyTo(): void
+    public function testToArrayFalseIgnoresOutputCaseTo(): void
     {
         $dto = ClassOutputSnakeDTO::fromArray([
             'firstName' => 'John',
@@ -260,7 +264,7 @@ class KeyConversionTest extends TestCase
         ], $dto->toArray());
     }
 
-    public function testToArrayFalseExplicitIgnoresOutputKeyTo(): void
+    public function testToArrayFalseExplicitIgnoresOutputCaseTo(): void
     {
         $dto = ClassOutputSnakeDTO::fromArray([
             'firstName' => 'John',
@@ -276,7 +280,7 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // OutputKeyTo — toArray(true): use #[OutputKeyTo] per class/property
+    // OutputCaseTo — toArray(true): use #[OutputCaseTo] per class/property
     // -------------------------------------------------------------------------
 
     public function testToArrayTrueUsesClassLevelOutputKey(): void
@@ -317,11 +321,11 @@ class KeyConversionTest extends TestCase
 
         $result = $dto->toArray(true);
 
-        // firstName has OutputKeyTo(Snake) → first_name
+        // firstName has OutputCaseTo(Snake) → first_name
         $this->assertArrayHasKey('first_name', $result);
         $this->assertSame('Alice', $result['first_name']);
 
-        // lastName has no OutputKeyTo → key unchanged
+        // lastName has no OutputCaseTo → key unchanged
         $this->assertArrayHasKey('lastName', $result);
         $this->assertSame('Smith', $result['lastName']);
     }
@@ -382,12 +386,12 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // OutputKeyTo — toArray(KeyCase::*): forced case overrides #[OutputKeyTo]
+    // OutputCaseTo — toArray(KeyCase::*): forced case overrides #[OutputCaseTo]
     // -------------------------------------------------------------------------
 
-    public function testToArrayForcedKeyCaseOverridesOutputKeyTo(): void
+    public function testToArrayForcedKeyCaseOverridesOutputCaseTo(): void
     {
-        // ClassOutputSnakeDTO has #[OutputKeyTo(Snake)], but toArray(KeyCase::Pascal)
+        // ClassOutputSnakeDTO has #[OutputCaseTo(Snake)], but toArray(KeyCase::Pascal)
         // forces Pascal on all keys, ignoring the attribute.
         $dto = ClassOutputSnakeDTO::fromArray([
             'firstName' => 'John',
@@ -402,7 +406,7 @@ class KeyConversionTest extends TestCase
         ], $dto->toArray(KeyCase::Pascal));
     }
 
-    public function testToArrayForcedMacroOverridesOutputKeyTo(): void
+    public function testToArrayForcedMacroOverridesOutputCaseTo(): void
     {
         $dto = MixedOutputKeyDTO::fromArray([
             'firstName' => 'John',
@@ -416,7 +420,7 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // OutputKeyTo — nested DTOs
+    // OutputCaseTo — nested DTOs
     // -------------------------------------------------------------------------
 
     public function testNestedToArrayFalseNoConversion(): void
@@ -432,10 +436,10 @@ class KeyConversionTest extends TestCase
         ], $dto->toArray(false));
     }
 
-    public function testNestedToArrayTrueEachLayerUsesOwnOutputKeyTo(): void
+    public function testNestedToArrayTrueEachLayerUsesOwnOutputCaseTo(): void
     {
-        // Parent: OutputKeyTo(Snake) → parent_name, child_item
-        // Child:  OutputKeyTo(Macro) → CHILD_FIELD
+        // Parent: OutputCaseTo(Snake) → parent_name, child_item
+        // Child:  OutputCaseTo(Macro) → CHILD_FIELD
         $dto = NestedOutputParentDTO::fromArray([
             'parentName' => 'Parent',
             'childItem'  => ['childField' => 'Child'],
@@ -475,7 +479,7 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Combined InputKeyTo + OutputKeyTo round-trip
+    // Combined InputCaseTo + OutputCaseTo round-trip
     // -------------------------------------------------------------------------
 
     public function testRoundTripSnakeCaseInputOutput(): void
@@ -508,14 +512,14 @@ class KeyConversionTest extends TestCase
         ], $dto->toArray(false));
     }
 
-    public function testRoundTripForcedOutputOverridesOutputKeyTo(): void
+    public function testRoundTripForcedOutputOverridesOutputCaseTo(): void
     {
         $dto = RoundTripDTO::fromArray([
             'first_name' => 'John',
             'last_name'  => 'Doe',
         ]);
 
-        // toArray(KeyCase::Macro) overrides the OutputKeyTo(Snake) attribute
+        // toArray(KeyCase::Macro) overrides the OutputCaseTo(Snake) attribute
         $this->assertSame([
             'FIRST_NAME' => 'John',
             'LAST_NAME'  => 'Doe',
@@ -523,11 +527,11 @@ class KeyConversionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Edge case: MACRO_CASE property names with class-level InputKeyTo(Snake)
+    // Edge case: MACRO_CASE property names with class-level InputCaseTo(Snake)
     //
     // Reproduces the index.php Headers pattern where:
     //   - input keys are kebab-case HTTP header names
-    //   - class-level InputKeyTo(Snake) converts kebab → snake for snake_case props
+    //   - class-level InputCaseTo(Snake) converts kebab → snake for snake_case props
     //   - but MACRO_CASE property names (SEC_CH_UA_MOBILE) are unreachable via
     //     the Snake conversion alone and require explicit property-level annotation
     // -------------------------------------------------------------------------
@@ -536,7 +540,7 @@ class KeyConversionTest extends TestCase
     {
         // Class-level Snake converts 'sec-ch-ua-mobile' → 'sec_ch_ua_mobile'
         // but the property is named SEC_CH_UA_MOBILE — these don't match.
-        // Without a property-level InputKeyTo on SEC_CH_UA_MOBILE this must fail.
+        // Without a property-level InputCaseTo on SEC_CH_UA_MOBILE this must fail.
         $this->expectException(RequiredValueException::class);
         $this->expectExceptionMessage("'SEC_CH_UA_MOBILE'");
 
@@ -548,7 +552,7 @@ class KeyConversionTest extends TestCase
 
     public function testMacroCasePropertyWithKebabAnnotationAcceptsKebabInput(): void
     {
-        // HeadersMimicDTO adds #[InputKeyTo(Kebab)] on SEC_CH_UA_MOBILE:
+        // HeadersMimicDTO adds #[InputCaseTo(Kebab)] on SEC_CH_UA_MOBILE:
         //   inputKey = convertCase('SEC_CH_UA_MOBILE', Kebab) = 'sec-ch-ua-mobile'
         // The inputKeyMap then reads 'sec-ch-ua-mobile' from the ORIGINAL input
         // and assigns it to $data['SEC_CH_UA_MOBILE'], bypassing the class-level
@@ -566,7 +570,7 @@ class KeyConversionTest extends TestCase
         $this->assertSame('Windows', $dto->sec_ch_ua_platform);
     }
 
-    public function testMacroCasePropertyOutputKeyTo(): void
+    public function testMacroCasePropertyOutputCaseTo(): void
     {
         $dto = HeadersMimicDTO::fromArray([
             'cache-control'      => 'no-cache',
@@ -575,7 +579,7 @@ class KeyConversionTest extends TestCase
             'sec-ch-ua-platform' => 'Windows',
         ]);
 
-        // Class-level OutputKeyTo(PascalSnake) applied to all props:
+        // Class-level OutputCaseTo(PascalSnake) applied to all props:
         //   cache_control      → Cache_Control
         //   sec_ch_ua          → Sec_Ch_Ua
         //   SEC_CH_UA_MOBILE   → Sec_Ch_Ua_Mobile
@@ -590,7 +594,7 @@ class KeyConversionTest extends TestCase
 
     public function testPropertyLevelInputKeyKebabOverridesClassSnakeForMacroProperty(): void
     {
-        // The property-level #[InputKeyTo(Kebab)] on SEC_CH_UA_MOBILE reads
+        // The property-level #[InputCaseTo(Kebab)] on SEC_CH_UA_MOBILE reads
         // from ORIGINAL input (pre-class-conversion) so it wins even though
         // the class Snake would have produced a different key (sec_ch_ua_mobile).
         $dto = HeadersMimicDTO::fromArray([
@@ -605,13 +609,31 @@ class KeyConversionTest extends TestCase
         $this->assertSame('actual-value', $dto->SEC_CH_UA_MOBILE);
     }
 
-    public function testWrongKeyCaseInInputKeyToThrowsException(): void
+    public function testWrongKeyCaseInInputCaseToThrowsException(): void
     {
         $this->expectException(InvalidKeyCaseException::class);
-        $this->expectExceptionMessage("Invalid key case 'Camel' in #[InputKeyTo] on Tests\DataTransferObjects\KeyConversion\InvalidKeyCaseDTO::class");
+        $this->expectExceptionMessage("Invalid key case 'Camel' in #[InputCaseTo] on Tests\DataTransferObjects\KeyConversion\InvalidKeyCaseDTO::class");
 
         InvalidKeyCaseDTO::fromArray([
             'nick_name' => 'test',
         ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // 4.x attribute names: rejected instead of silently ignored
+    // -------------------------------------------------------------------------
+
+    public function testRemovedClassLevelAttributeIsRejected(): void
+    {
+        $this->expectException(RemovedAttributeException::class);
+        $this->expectExceptionMessage('#[InputKeyTo] on ' . RemovedClassAttributeDTO::class . '::class was renamed to #[InputCaseTo] in 5.0');
+        RemovedClassAttributeDTO::fromArray(['first_name' => 'Kip']);
+    }
+
+    public function testRemovedPropertyLevelAttributeIsRejected(): void
+    {
+        $this->expectException(RemovedAttributeException::class);
+        $this->expectExceptionMessage('#[OutputKeyTo] on ' . RemovedPropertyAttributeDTO::class . '::$firstName was renamed to #[OutputCaseTo] in 5.0');
+        RemovedPropertyAttributeDTO::fromArray(['firstName' => 'Kip']);
     }
 }

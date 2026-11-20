@@ -54,9 +54,6 @@ class AttackTest extends TestCase
 
     protected function setUp(): void
     {
-        ImmutableBaseException::$depth = 0;
-        ImmutableBaseException::$paths = [];
-
         $this->baseArray = [
             'string'              => 'string',
             'int'                 => 1,
@@ -289,15 +286,13 @@ class AttackTest extends TestCase
         }
     }
 
-    public function testErrorPathStaticStateResetsAfterException(): void
+    public function testErrorPathResetsAfterException(): void
     {
         try {
             DTO::fromArray(array_merge($this->baseArray, ['string' => null]));
         } catch (RequiredValueException) {
         }
 
-        $this->assertSame(0, ImmutableBaseException::$depth);
-        $this->assertEmpty(ImmutableBaseException::$paths);
 
         try {
             DTO::fromArray(array_merge($this->baseArray, ['int' => []]));
@@ -318,8 +313,6 @@ class AttackTest extends TestCase
             // Silent for the next Exception
         }
 
-        $this->assertSame(0, ImmutableBaseException::$depth);
-        $this->assertEmpty(ImmutableBaseException::$paths);
 
         try {
             DTO::fromArray(array_merge($this->baseArray, ['float' => 'wrong']));

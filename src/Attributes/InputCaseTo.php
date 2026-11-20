@@ -18,11 +18,11 @@ use ReallifeKip\ImmutableBase\Enums\KeyCase;
  * Conversion splits words on camelCase/PascalCase boundaries, underscores,
  * hyphens, and whitespace, then rejoins in the target case.
  *
- * @example #[InputKeyTo(KeyCase::Camel)]  — accepts snake_case input keys
- * @example #[InputKeyTo(KeyCase::Snake)]  — accepts camelCase input keys
+ * @example #[InputCaseTo(KeyCase::Camel)]  — accepts snake_case input keys
+ * @example #[InputCaseTo(KeyCase::Snake)]  — accepts camelCase input keys
  */
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PROPERTY)]
-final class InputKeyTo
+final class InputCaseTo
 {
     private function __construct(KeyCase $keyCase)
     {

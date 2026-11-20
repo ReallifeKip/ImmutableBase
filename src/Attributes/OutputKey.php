@@ -8,8 +8,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * Writes a property under exactly this key when serializing with
  * `toArray(true)` / `toJson(true)`.
  *
- * Takes precedence over #[OutputKeyTo] on the same property and over the
- * class-level #[OutputKeyTo]. Passing a KeyCase to toArray() / toJson()
+ * Takes precedence over #[OutputCaseTo] on the same property and over the
+ * class-level #[OutputCaseTo]. Passing a KeyCase to toArray() / toJson()
  * still converts every key, including this one. Pair it with #[InputKey]
  * to round-trip a key that no KeyCase can produce.
  *

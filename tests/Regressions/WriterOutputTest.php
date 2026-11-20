@@ -8,12 +8,12 @@ use Composer\Autoload\ClassLoader;
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\CLI\Writer;
 use ReallifeKip\ImmutableBase\CLI\writer\Markdown;
-use ReallifeKip\ImmutableBase\ImmutableBase;
 use Tests\Regressions\Objects\Writer\DocItem;
 use Tests\Regressions\Objects\Writer\DocOrder;
 use Tests\Regressions\Objects\Writer\DocPairFirst;
 use Tests\Regressions\Objects\Writer\DocPairSecond;
 use Tests\Regressions\Objects\Writer\Size;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 /**
  * ib-writer output for the shapes it used to get wrong: see the fixtures in
@@ -29,7 +29,7 @@ class WriterOutputTest extends TestCase
     {
         Writer::$silent      = true;
         $this->dir           = sys_get_temp_dir() . '/ib_writer_regression_' . uniqid();
-        $this->originalState = ImmutableBase::state();
+        $this->originalState = Metadata::state();
         mkdir($this->dir);
     }
 
@@ -37,7 +37,7 @@ class WriterOutputTest extends TestCase
     {
         array_map('unlink', glob("{$this->dir}/*"));
         rmdir($this->dir);
-        $s = &ImmutableBase::state();
+        $s = &Metadata::state();
         $s = $this->originalState;
     }
 

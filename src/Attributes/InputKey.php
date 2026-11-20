@@ -11,8 +11,8 @@ namespace ReallifeKip\ImmutableBase\Attributes;
  * contain characters such as `.` or `$`, or differ from the property name
  * entirely. The property name itself is still accepted as an input key.
  *
- * Takes precedence over #[InputKeyTo] on the same property and over the
- * class-level #[InputKeyTo]. The input key is consumed, so strict mode does
+ * Takes precedence over #[InputCaseTo] on the same property and over the
+ * class-level #[InputCaseTo]. The input key is consumed, so strict mode does
  * not report it as undeclared. Two properties of one class cannot declare
  * the same key.
  *

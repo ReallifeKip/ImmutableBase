@@ -6,9 +6,9 @@ namespace Tests\Regressions;
 
 use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\CLI\Cacher;
-use ReallifeKip\ImmutableBase\ImmutableBase;
 use Tests\Regressions\Objects\PathItemDTO;
 use Tests\Regressions\Objects\UnionHolderDTO;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 /**
  * A cache entry that no longer matches its class (a property added, removed,
@@ -22,11 +22,11 @@ class StaleCacheTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->original  = ImmutableBase::state();
+        $this->original  = Metadata::state();
         $this->cacheFile = sys_get_temp_dir() . '/ib_stale_cache_' . uniqid() . '.php';
         Cacher::$silent  = true;
 
-        $s              = &ImmutableBase::state();
+        $s              = &Metadata::state();
         $s['cachePath'] = $this->cacheFile;
         $level          = ob_get_level();
         ob_start();
@@ -45,20 +45,20 @@ class StaleCacheTest extends TestCase
     protected function tearDown(): void
     {
         @unlink($this->cacheFile);
-        $s = &ImmutableBase::state();
+        $s = &Metadata::state();
         $s = $this->original;
     }
 
     /** @param callable(array): array $mutate Applied to the cached `types` of $class. */
     private static function staleEntry(string $class, callable $mutate): void
     {
-        $s                                  = &ImmutableBase::state();
+        $s                                  = &Metadata::state();
         $s['cachedMeta'][$class]['types'] = $mutate($s['cachedMeta'][$class]['types']);
     }
 
     public function testFreshCacheIsUsed(): void
     {
-        $this->assertArrayHasKey(PathItemDTO::class, ImmutableBase::state()['cachedMeta']);
+        $this->assertArrayHasKey(PathItemDTO::class, Metadata::state()['cachedMeta']);
         $this->assertSame('a', PathItemDTO::fromArray(['sku' => 'a'])->sku);
     }
 

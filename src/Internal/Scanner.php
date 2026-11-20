@@ -8,11 +8,11 @@ use Closure;
 use ReallifeKip\ImmutableBase\Attributes\ArrayOf;
 use ReallifeKip\ImmutableBase\Attributes\Defaults;
 use ReallifeKip\ImmutableBase\Attributes\InputKey;
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Attributes\KeepOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Lax;
 use ReallifeKip\ImmutableBase\Attributes\OutputKey;
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Attributes\Proxy;
 use ReallifeKip\ImmutableBase\Attributes\SkipOnNull;
 use ReallifeKip\ImmutableBase\Attributes\Spec;
@@ -26,6 +26,7 @@ use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidArrayOfUsag
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyCaseException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidKeyNameException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidPropertyTypeException;
+use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\RemovedAttributeException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidProxyException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidSpecException;
 use ReallifeKip\ImmutableBase\Exceptions\DefinitionExceptions\InvalidVisibilityException;
@@ -159,9 +160,9 @@ final class Scanner
     /**
      * Reflects all public properties of a class and assembles the full
      * property metadata structure. Extracts class-level attributes (#[Strict],
-     * #[Lax], #[SkipOnNull], #[ValidateFromSelf], #[Spec], #[InputKeyTo],
-     * #[OutputKeyTo]) and builds the validation lineage via classTree for
-     * enforceValidationRules(). Also collects per-property InputKeyTo overrides
+     * #[Lax], #[SkipOnNull], #[ValidateFromSelf], #[Spec], #[InputCaseTo],
+     * #[OutputCaseTo]) and builds the validation lineage via classTree for
+     * enforceValidationRules(). Also collects per-property InputCaseTo overrides
      * into `propertyInputKeyCases` and #[InputKey] names into `propertyInputKeys`
      * for use by KeyCaser::remapInput().
      *
@@ -169,12 +170,14 @@ final class Scanner
      * @param array{bool, bool, bool} $flags Tuple of [isDTO, isVO, isSVO] indicating the object's base type.
      * @throws InvalidSpecException
      * @throws InvalidKeyNameException When two properties declare the same #[InputKey].
+     * @throws RemovedAttributeException When the class still uses an attribute renamed in 5.0.
      * @return Property
      */
     private static function scanProperties(ReflectionClass $ref, array $flags): array
     {
         [$isDTO, $isVO, $isSVO] = $flags;
         $classname              = $ref->name;
+        self::rejectRemovedAttributes($ref, "$classname::class");
         if (!$isDTO && $ref->getAttributes(Spec::class)) {
             $spec = self::getAttributeArgument($ref, Spec::class);
             if (!\is_string($spec) || empty($spec = mb_trim($spec))) {
@@ -200,7 +203,7 @@ final class Scanner
             'spec'              => $spec ?? null,
             'classTree'         => $classTree,
             'classTreeReversed' => array_reverse($classTree),
-            'inputKeyCase'      => self::getValidatedKeyCase(self::getAttributeArgument($ref, InputKeyTo::class), 'InputKeyTo', "$classname::class"),
+            'inputKeyCase'      => self::getValidatedKeyCase(self::getAttributeArgument($ref, InputCaseTo::class), 'InputCaseTo', "$classname::class"),
             'types'             => [],
         ];
         $obj      = null;
@@ -210,7 +213,7 @@ final class Scanner
             $obj      = $ref->newInstanceWithoutConstructor();
             $defaults = $obj::defaultValues();
         }
-        $classOutputKeyCase = self::getValidatedKeyCase(self::getAttributeArgument($ref, OutputKeyTo::class), 'OutputKeyTo', "$classname::class");
+        $classOutputKeyCase = self::getValidatedKeyCase(self::getAttributeArgument($ref, OutputCaseTo::class), 'OutputCaseTo', "$classname::class");
         foreach ($ref->getProperties() as $property) {
             $name                 = $property->name;
             $prop['types'][$name] = self::scanProperty($property, $prop['skipOnNull'], $classOutputKeyCase);
@@ -243,19 +246,20 @@ final class Scanner
      * Extracts type metadata from a single property. Enforces that all
      * properties must be public (readonly is implicit via the class declaration).
      * Delegates to scanNamedType() or scanUnionType() based on reflection type,
-     * and resolves #[ArrayOf], #[SkipOnNull], #[KeepOnNull], #[InputKeyTo],
-     * #[OutputKeyTo] attributes. Property-level #[InputKeyTo] stores the target
+     * and resolves #[ArrayOf], #[SkipOnNull], #[KeepOnNull], #[InputCaseTo],
+     * #[OutputCaseTo] attributes. Property-level #[InputCaseTo] stores the target
      * KeyCase in `inputKeyCase`; combined with `hasInputKeyOverride`, this is
      * picked up by scanProperties() for KeyCaser::remapInput(). #[InputKey] stores
-     * its exact key in `inputKey` (taking precedence over #[InputKeyTo]).
+     * its exact key in `inputKey` (taking precedence over #[InputCaseTo]).
      * `outputKey` is pre-computed from #[OutputKey], else the property-level
-     * #[OutputKeyTo], else the class-level case.
+     * #[OutputCaseTo], else the class-level case.
      *
      * @param ReflectionProperty $property         The property to extract metadata from.
      * @param bool               $classSkipOnNull  Whether the owning class has a class-level #[SkipOnNull] attribute.
-     * @param KeyCase|null       $classOutputKeyCase Class-level OutputKeyTo case, used when the property has none.
+     * @param KeyCase|null       $classOutputKeyCase Class-level OutputCaseTo case, used when the property has none.
      * @throws InvalidVisibilityException
      * @throws InvalidKeyNameException When #[InputKey] / #[OutputKey] is not given a non-empty string.
+     * @throws RemovedAttributeException When the property still uses an attribute renamed in 5.0.
      * @return Type
      */
     private static function scanProperty(ReflectionProperty $property, bool $classSkipOnNull, ?KeyCase $classOutputKeyCase = null): array
@@ -266,8 +270,9 @@ final class Scanner
         $type    = $property->getType();
         $name    = $property->name;
         $target  = $property->getDeclaringClass()->getName() . "::$$name";
-        $inCase  = self::getValidatedKeyCase(self::getAttributeArgument($property, InputKeyTo::class), 'InputKeyTo', $target);
-        $outCase = self::getValidatedKeyCase(self::getAttributeArgument($property, OutputKeyTo::class), 'OutputKeyTo', $target) ?? $classOutputKeyCase;
+        self::rejectRemovedAttributes($property, $target);
+        $inCase  = self::getValidatedKeyCase(self::getAttributeArgument($property, InputCaseTo::class), 'InputCaseTo', $target);
+        $outCase = self::getValidatedKeyCase(self::getAttributeArgument($property, OutputCaseTo::class), 'OutputCaseTo', $target) ?? $classOutputKeyCase;
         $inKey   = self::getValidatedKeyName($property, InputKey::class, 'InputKey', $target);
         $outKey  = self::getValidatedKeyName($property, OutputKey::class, 'OutputKey', $target);
 
@@ -327,6 +332,27 @@ final class Scanner
     }
 
     /**
+     * Throws when $target still carries an attribute renamed in 5.0, which
+     * would otherwise be ignored without any error.
+     *
+     * @param ReflectionClass|ReflectionProperty $target   The class or property to inspect.
+     * @param string                             $location Human-readable scan location for the exception message.
+     * @throws RemovedAttributeException
+     */
+    private static function rejectRemovedAttributes(ReflectionClass | ReflectionProperty $target, string $location): void
+    {
+        static $renamed = [
+            'ReallifeKip\\ImmutableBase\\Attributes\\InputKeyTo'  => ['InputKeyTo', 'InputCaseTo'],
+            'ReallifeKip\\ImmutableBase\\Attributes\\OutputKeyTo' => ['OutputKeyTo', 'OutputCaseTo'],
+        ];
+        foreach ($target->getAttributes() as $attribute) {
+            if (isset($renamed[$attribute->getName()])) {
+                throw new RemovedAttributeException(...[...$renamed[$attribute->getName()], $location]);
+            }
+        }
+    }
+
+    /**
      * Reads the key declared by #[InputKey] or #[OutputKey] on a property.
      * Returns null when the attribute is absent.
      *
@@ -351,11 +377,11 @@ final class Scanner
     }
 
     /**
-     * Validates that a value resolved from #[InputKeyTo] or #[OutputKeyTo] is
+     * Validates that a value resolved from #[InputCaseTo] or #[OutputCaseTo] is
      * either null (attribute absent) or a KeyCase enum instance.
      *
      * @param mixed  $value     The raw attribute argument.
-     * @param string $attribute Short attribute name ('InputKeyTo' or 'OutputKeyTo').
+     * @param string $attribute Short attribute name ('InputCaseTo' or 'OutputCaseTo').
      * @param string $target    Human-readable scan location for the exception message.
      * @throws InvalidKeyCaseException
      */

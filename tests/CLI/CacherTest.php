@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use ReallifeKip\ImmutableBase\CLI\Cacher;
 use ReallifeKip\ImmutableBase\ImmutableBase;
 use ReflectionClass;
+use ReallifeKip\ImmutableBase\Internal\Metadata;
 
 class CacherTest extends TestCase
 {
@@ -28,9 +29,9 @@ class CacherTest extends TestCase
         $this->scanDir = getcwd() . '/tests';
 
         // Backup original state
-        $this->originalProperties = ImmutableBase::state()['properties'];
-        $this->originalCachedMeta = ImmutableBase::state()['cachedMeta'];
-        $this->originalRefs       = ImmutableBase::state()['refs'];
+        $this->originalProperties = Metadata::state()['properties'];
+        $this->originalCachedMeta = Metadata::state()['cachedMeta'];
+        $this->originalRefs       = Metadata::state()['refs'];
     }
 
     protected function tearDown(): void
@@ -39,7 +40,7 @@ class CacherTest extends TestCase
             unlink($this->cachePath);
         }
         // Restore original state
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['properties'] = $this->originalProperties;
         $s['cachedMeta'] = $this->originalCachedMeta;
         $s['refs']       = $this->originalRefs;
@@ -208,32 +209,32 @@ class CacherTest extends TestCase
             }
         }
 
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['cachePath']  = null;
         ImmutableBase::loadCache();
 
-        $this->assertNotEmpty(ImmutableBase::state()['cachedMeta']);
+        $this->assertNotEmpty(Metadata::state()['cachedMeta']);
     }
 
     public function testLoadCacheSkipsWhenAlreadyLoaded(): void
     {
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = ['already' => 'loaded'];
         ImmutableBase::loadCache();
 
         // Should not overwrite existing cache
-        $this->assertArrayHasKey('already', ImmutableBase::state()['cachedMeta']);
+        $this->assertArrayHasKey('already', Metadata::state()['cachedMeta']);
     }
 
     public function testLoadCacheSkipsWhenFileNotExists(): void
     {
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['cachePath']  = '/nonexistent/path/ib-cache.php';
         ImmutableBase::loadCache();
 
-        $this->assertEmpty(ImmutableBase::state()['cachedMeta']);
+        $this->assertEmpty(Metadata::state()['cachedMeta']);
     }
 
     public function testEnumCaseDefaultIsPreservedInCache(): void
@@ -271,7 +272,7 @@ class CacherTest extends TestCase
             }
         }
 
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['cachePath']  = null;
         $s['properties'] = [];
@@ -295,7 +296,7 @@ class CacherTest extends TestCase
         }
 
         // Load cache, clear compiled properties, force rebuild from cache
-        $s               = &ImmutableBase::state();
+        $s               = &Metadata::state();
         $s['cachedMeta'] = [];
         $s['cachePath']  = null;
         ImmutableBase::loadCache();
@@ -306,6 +307,6 @@ class CacherTest extends TestCase
         // Replace with one of your actual test DTO classes:
         // $dto = YourDTO::fromArray([...]);
         // $this->assertInstanceOf(YourDTO::class, $dto);
-        $this->assertNotEmpty(ImmutableBase::state()['cachedMeta']);
+        $this->assertNotEmpty(Metadata::state()['cachedMeta']);
     }
 }

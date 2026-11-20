@@ -3,11 +3,11 @@
 declare (strict_types = 1);
 namespace Benchmarks\DataTransferObjects;
 
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 use ReallifeKip\ImmutableBase\Objects\DataTransferObject;
 
-#[InputKeyTo(KeyCase::Camel)]
+#[InputCaseTo(KeyCase::Camel)]
 readonly class InputKeyDTO extends DataTransferObject
 {
     public string $firstName;

@@ -5,7 +5,6 @@ declare (strict_types = 1);
 namespace Tests\Attacks;
 
 use PHPUnit\Framework\TestCase;
-use ReallifeKip\ImmutableBase\Exceptions\ImmutableBaseException;
 use ReallifeKip\ImmutableBase\Exceptions\InitializationExceptions\RequiredValueException;
 use ReallifeKip\ImmutableBase\Exceptions\ValidationExceptions\ValidationChainException;
 use Tests\Attacks\Objects\DeepNesting\AddressDTO;
@@ -31,9 +30,6 @@ class Attack2Test extends TestCase
 
     protected function setUp(): void
     {
-        ImmutableBaseException::$depth = 0;
-        ImmutableBaseException::$paths = [];
-
         $this->baseArray = [
             'string'              => 'string',
             'int'                 => 1,
