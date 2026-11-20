@@ -59,9 +59,11 @@ final class ClassDiscovery
 
     /**
      * Extracts the fully-qualified names of every class declared in a PHP
-     * source file by tokenizing its contents. Handles both simple and
-     * qualified namespace declarations. `Foo::class` and anonymous classes
-     * (`new class`) are not declarations and are skipped.
+     * source file by tokenizing its contents. Handles simple, qualified and
+     * braced namespace declarations, including several namespaces in one file.
+     * A declaration is `class` immediately followed by its name, so
+     * `Foo::class` and anonymous classes (`new class`, `new readonly class`,
+     * `new #[Attr] class`, `new class(...) extends Foo`) are skipped.
      *
      * @param string $path Absolute file path.
      * @return list<class-string> FQCNs in declaration order; empty if none or unreadable.
@@ -82,22 +84,32 @@ final class ClassDiscovery
                 if ($token === ';' || $token === '{') {
                     $gettingNamespace = false;
                 }
+                $gettingClass = false;
                 continue;
             }
             [$type, $value] = $token;
+            if ($type === T_WHITESPACE || $type === T_COMMENT || $type === T_DOC_COMMENT) {
+                continue;
+            }
+            if ($gettingClass) {
+                // The token right after `class`: a name for a declaration, anything else for an anonymous class
+                if ($type === T_STRING) {
+                    $classes[] = ltrim("$namespace\\$value", '\\');
+                }
+                $gettingClass  = false;
+                $prevTokenType = $type;
+                continue;
+            }
+            if ($type === T_NAMESPACE) {
+                $namespace = '';
+            }
             match (true) {
                 $type === T_CLASS && $prevTokenType !== T_DOUBLE_COLON && $prevTokenType !== T_NEW => $gettingClass     = true,
                 $type === T_NAMESPACE                                                              => $gettingNamespace = true,
                 $gettingNamespace && ($type === T_NAME_QUALIFIED || $type === T_STRING)            => $namespace .= $value,
                 default                                                                            => null
             };
-            if ($gettingClass && $type === T_STRING) {
-                $classes[]    = ltrim("$namespace\\$value", '\\');
-                $gettingClass = false;
-            }
-            if ($type !== T_WHITESPACE) {
-                $prevTokenType = $type;
-            }
+            $prevTokenType = $type;
         }
 
         return $classes;
