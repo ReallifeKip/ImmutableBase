@@ -175,6 +175,8 @@ composer require reallifekip/immutable-base
 
 需要 PHP 8.4 以上。
 
+從 4.x 升級？請參考 [UPGRADE_TW.md](UPGRADE_TW.md)。
+
 ---
 
 ## 快速範例
@@ -719,16 +721,16 @@ try {
 
 VO、SVO 驗證鏈預設由繼承鏈頂層向下驗證到當前類，套用 `#[ValidateFromSelf]` 後，驗證鏈將改為從當前類開始向上驗證。
 
-### `#[InputKeyTo]` - 輸入 Key 命名轉換
+### `#[InputCaseTo]` - 輸入 Key 命名轉換
 
 在注入前將輸入陣列的 key 轉換為指定的 `KeyCase` 命名規則。套用於類層級時，轉換所有 key；套用於屬性層級時，僅覆蓋該屬性的類層級設定。
 
 ```php
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 
 // 類層級：接受 snake_case 輸入 key（nick_name → nickName）
-#[InputKeyTo(KeyCase::Camel)]
+#[InputCaseTo(KeyCase::Camel)]
 readonly class UserDTO extends DataTransferObject
 {
     public string $nickName;
@@ -737,21 +739,21 @@ readonly class UserDTO extends DataTransferObject
 UserDTO::fromArray(['nick_name' => 'Kip']); // nickName = 'Kip'
 ```
 
-### `#[OutputKeyTo]` - 輸出 Key 命名轉換
+### `#[OutputCaseTo]` - 輸出 Key 命名轉換
 
 序列化時，將屬性名稱轉換為指定的 `KeyCase` 命名規則。套用於類層級時，轉換所有序列化 key；套用於屬性層級時，僅覆蓋該屬性的類層級設定。
 
 `toArray()` / `toJson()` 的引數決定轉換行為：
 - `false`（預設）：不套用任何 key 轉換，屬性名稱原樣輸出
-- `true`：套用 `#[OutputKeyTo]` 定義的轉換，僅作用於當前層級，不向下滲透至巢狀物件（巢狀物件依各自的 `#[OutputKeyTo]` 宣告獨立運作）
-- `KeyCase::*`：忽略 `#[OutputKeyTo]`，以指定的 `KeyCase` 強制覆蓋所有 key
+- `true`：套用 `#[OutputCaseTo]` 定義的轉換，僅作用於當前層級，不向下滲透至巢狀物件（巢狀物件依各自的 `#[OutputCaseTo]` 宣告獨立運作）
+- `KeyCase::*`：忽略 `#[OutputCaseTo]`，以指定的 `KeyCase` 強制覆蓋所有 key
 
 ```php
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 
 // 類層級：將 nickName 序列化為 nick_name
-#[OutputKeyTo(KeyCase::Snake)]
+#[OutputCaseTo(KeyCase::Snake)]
 readonly class UserDTO extends DataTransferObject
 {
     public string $nickName;
@@ -777,8 +779,8 @@ UserDTO::fromArray(['nickName' => 'Kip'])->toArray(true); // ['nick_name' => 'Ki
 
 遇到任何 `KeyCase` 都轉不出來的 key——例如數字開頭、含有 `.` 或 `$` 等字元，或與屬性名稱毫無關係——可以直接指定確切的 key。
 
-- `#[InputKey('...')]` 從該輸入 key 讀取屬性值，屬性名稱本身仍可作為輸入 key。優先於屬性與類別上的 `#[InputKeyTo]`，嚴格模式也不會把該 key 視為未宣告。同一個類別中不能有兩個屬性宣告相同的 key。
-- `#[OutputKey('...')]` 在 `toArray(true)` / `toJson(true)` 時以該 key 輸出屬性。優先於 `#[OutputKeyTo]`；若傳入 `KeyCase` 給 `toArray()` / `toJson()`，仍會轉換所有屬性名稱。
+- `#[InputKey('...')]` 從該輸入 key 讀取屬性值，屬性名稱本身仍可作為輸入 key。優先於屬性與類別上的 `#[InputCaseTo]`，嚴格模式也不會把該 key 視為未宣告。同一個類別中不能有兩個屬性宣告相同的 key。
+- `#[OutputKey('...')]` 在 `toArray(true)` / `toJson(true)` 時以該 key 輸出屬性。優先於 `#[OutputCaseTo]`；若傳入 `KeyCase` 給 `toArray()` / `toJson()`，仍會轉換所有屬性名稱。
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\InputKey;
@@ -955,9 +957,11 @@ vendor/bin/ib-writer --format=ts --output=docs
 
 `InvalidSpecException` - `#[Spec]` 未提供引數或引數為空。
 
-`InvalidKeyCaseException` - `#[InputKeyTo]` 或 `#[OutputKeyTo]` 接收到非 `KeyCase` enum 實例的值（例如傳入純字串而非 `KeyCase::Camel`）。
+`InvalidKeyCaseException` - `#[InputCaseTo]` 或 `#[OutputCaseTo]` 接收到非 `KeyCase` enum 實例的值（例如傳入純字串而非 `KeyCase::Camel`）。
 
 `InvalidKeyNameException` - `#[InputKey]` 或 `#[OutputKey]` 未接收到非空字串，或同一類別中有兩個屬性宣告了相同的 `#[InputKey]`。
+
+`RemovedAttributeException` - 類別或屬性仍使用 5.0 已更名的 attribute（`#[InputKeyTo]`、`#[OutputKeyTo]`），請參考 [UPGRADE_TW.md](UPGRADE_TW.md)。
 
 `InvalidCompareTargetException` - `equals()` 的比較對象與自身類不同，或陣列中包含無法比較的非 ImmutableBase 物件。
 

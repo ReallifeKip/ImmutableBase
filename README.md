@@ -175,6 +175,8 @@ composer require reallifekip/immutable-base
 
 Requires PHP 8.4+.
 
+Upgrading from 4.x? See [UPGRADE.md](UPGRADE.md).
+
 ---
 
 ## Quick Example
@@ -719,16 +721,16 @@ try {
 
 By default, the VO and SVO validation chain walks from the top of the inheritance chain down to the current class. With `#[ValidateFromSelf]` applied, the chain is reversed to start from the current class and walk upward.
 
-### `#[InputKeyTo]` - Input Key Case Conversion
+### `#[InputCaseTo]` - Input Key Case Conversion
 
 Converts incoming array keys to the specified `KeyCase` naming convention before hydration. Applied at class level, it remaps all keys; applied at property level, it overrides the class-level conversion for that property only.
 
 ```php
-use ReallifeKip\ImmutableBase\Attributes\InputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\InputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 
 // Class-level: accepts snake_case input keys (nick_name → nickName)
-#[InputKeyTo(KeyCase::Camel)]
+#[InputCaseTo(KeyCase::Camel)]
 readonly class UserDTO extends DataTransferObject
 {
     public string $nickName;
@@ -737,21 +739,21 @@ readonly class UserDTO extends DataTransferObject
 UserDTO::fromArray(['nick_name' => 'Kip']); // nickName = 'Kip'
 ```
 
-### `#[OutputKeyTo]` - Output Key Case Conversion
+### `#[OutputCaseTo]` - Output Key Case Conversion
 
 Converts property names to the specified `KeyCase` naming convention during serialization. Applied at class level, it remaps all serialized keys; applied at property level, it overrides the class-level conversion for that property only.
 
 The argument passed to `toArray()` / `toJson()` controls the conversion behavior:
 - `false` (default): no key conversion — property names are output as-is
-- `true`: applies the `#[OutputKeyTo]`-defined conversion for the current level only — nested objects use their own `#[OutputKeyTo]` declarations independently and are not affected
-- `KeyCase::*`: ignores `#[OutputKeyTo]` and forces the specified case globally
+- `true`: applies the `#[OutputCaseTo]`-defined conversion for the current level only — nested objects use their own `#[OutputCaseTo]` declarations independently and are not affected
+- `KeyCase::*`: ignores `#[OutputCaseTo]` and forces the specified case globally
 
 ```php
-use ReallifeKip\ImmutableBase\Attributes\OutputKeyTo;
+use ReallifeKip\ImmutableBase\Attributes\OutputCaseTo;
 use ReallifeKip\ImmutableBase\Enums\KeyCase;
 
 // Class-level: serializes nickName → nick_name
-#[OutputKeyTo(KeyCase::Snake)]
+#[OutputCaseTo(KeyCase::Snake)]
 readonly class UserDTO extends DataTransferObject
 {
     public string $nickName;
@@ -777,8 +779,8 @@ Available `KeyCase` values:
 
 For keys that no `KeyCase` can produce — keys starting with a digit, containing characters such as `.` or `$`, or unrelated to the property name — declare the exact key instead.
 
-- `#[InputKey('...')]` reads the property from that input key. The property name itself is still accepted. It takes precedence over `#[InputKeyTo]` on the property and on the class, and strict mode does not report the key as undeclared. Two properties of one class cannot declare the same key.
-- `#[OutputKey('...')]` writes the property under that key with `toArray(true)` / `toJson(true)`. It takes precedence over `#[OutputKeyTo]`; passing a `KeyCase` to `toArray()` / `toJson()` still converts every property name.
+- `#[InputKey('...')]` reads the property from that input key. The property name itself is still accepted. It takes precedence over `#[InputCaseTo]` on the property and on the class, and strict mode does not report the key as undeclared. Two properties of one class cannot declare the same key.
+- `#[OutputKey('...')]` writes the property under that key with `toArray(true)` / `toJson(true)`. It takes precedence over `#[OutputCaseTo]`; passing a `KeyCase` to `toArray()` / `toJson()` still converts every property name.
 
 ```php
 use ReallifeKip\ImmutableBase\Attributes\InputKey;
@@ -955,9 +957,11 @@ Thrown when class structure or attribute configuration is incorrect. These are p
 
 `InvalidSpecException` - `#[Spec]` is used without an argument or with an empty argument.
 
-`InvalidKeyCaseException` - `#[InputKeyTo]` or `#[OutputKeyTo]` received a value that is not a `KeyCase` enum instance (e.g. a plain string instead of `KeyCase::Camel`).
+`InvalidKeyCaseException` - `#[InputCaseTo]` or `#[OutputCaseTo]` received a value that is not a `KeyCase` enum instance (e.g. a plain string instead of `KeyCase::Camel`).
 
 `InvalidKeyNameException` - `#[InputKey]` or `#[OutputKey]` did not receive a non-empty string, or two properties of one class declare the same `#[InputKey]`.
+
+`RemovedAttributeException` - A class or property still uses an attribute renamed in 5.0 (`#[InputKeyTo]`, `#[OutputKeyTo]`); see [UPGRADE.md](UPGRADE.md).
 
 `InvalidCompareTargetException` - The `equals()` comparison target is not the same class, or an array contains a non-ImmutableBase object that cannot be compared.
 
